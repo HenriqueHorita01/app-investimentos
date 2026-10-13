@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Proventos do mês (escuro)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=DM+Sans:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3DBE8E;text-decoration:none}a:hover{color:#6FD6AE}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0E1116; font-family: 'DM Sans', sans-serif; color: #E8EAED; display: flex; flex-direction: column">
+  <div style="flex: 1; padding: 20px 20px 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+    <a href="Main-escuro.dc.html" style="font-size: 14px; display: flex; align-items: center; gap: 4px; min-height: 32px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>Início</a>
+    <div style="font-size: 22px; font-weight: 700">Proventos · outubro</div>
+
+    <div style="background: #1A2E27; border: 1px solid #24433A; color: #FFFFFF; border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+      <div style="font-size: 13px; color: #A8C7BA">Previsto no mês</div>
+      <div style="font-family: 'DM Mono', monospace; font-size: 28px; font-weight: 500">{{total}}</div>
+      <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #2A303A">
+        <div style="{{barRec}}"></div>
+        <div style="{{barConf}}"></div>
+        <div style="{{barAnu}}"></div>
+        <div style="{{barEst}}"></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; font-size: 12px; color: #C9D6D0">
+        <div><span style="color: #7FE0BE">●</span> Recebido {{rec}}</div>
+        <div><span style="color: #F0A862">●</span> A confirmar {{conf}}</div>
+        <div><span style="color: #9DB4F5">●</span> Anunciado {{anu}}</div>
+        <div><span style="color: #9AA3AE">●</span> Estimado {{est}}</div>
+      </div>
+      <div style="font-size: 12px; color: #A8C7BA; border-top: 1px solid #24433A; padding-top: 8px">+ R$ 155,00 rendimento do CDB (estimado, bruto)</div>
+    </div>
+
+    <sc-if value="{{showConfirm}}" hint-placeholder-val="{{ true }}">
+      <div style="background: #171B22; border: 1px solid #5A4024; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline">
+          <div style="font-size: 15px; font-weight: 700">PVBI11 pagou em 07/10</div>
+          <div style="font-size: 12px; color: #F0A862; font-weight: 700">A confirmar</div>
+        </div>
+        <div style="font-size: 13px; color: #9AA3AE">Previsto: 151 cotas × R$ 0,37 = <b style="color: #E8EAED">R$ 55,87</b>. Confira no extrato da corretora.</div>
+        <sc-if value="{{isPendente}}" hint-placeholder-val="{{ true }}">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+            <button type="button" onClick="{{confirmar}}" style="font-family: inherit; font-size: 14px; font-weight: 700; border: 0; border-radius: 10px; padding: 12px; min-height: 44px; background: #2FA57A; color: #0E1116; cursor: pointer">Confirmar</button>
+            <button type="button" onClick="{{ajustar}}" style="font-family: inherit; font-size: 14px; font-weight: 700; border: 1px solid #343B46; border-radius: 10px; padding: 12px; min-height: 44px; background: #171B22; color: #E8EAED; cursor: pointer">Ajustar valor</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{isAjustando}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; gap: 8px; align-items: flex-end">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px">
+              <label for="valorReal" style="font-size: 12px; color: #9AA3AE">Valor recebido (R$)</label>
+              <input id="valorReal" value="{{valorTxt}}" onChange="{{digitar}}" style="font-family: 'DM Mono', monospace; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; min-width: 0; background: #0E1116; color: #E8EAED">
+            </div>
+            <button type="button" onClick="{{salvar}}" style="font-family: inherit; font-size: 14px; font-weight: 700; border: 0; border-radius: 10px; padding: 12px 16px; min-height: 46px; background: #2FA57A; color: #0E1116; cursor: pointer">Salvar</button>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <div style="background: #171B22; border-radius: 14px; display: flex; flex-direction: column">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #232831">
+          <div>
+            <div style="font-weight: 700; font-size: 14px">{{r.ticker}}</div>
+            <div style="font-size: 12px; color: #9AA3AE">{{r.sub}}</div>
+          </div>
+          <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+            <div style="font-family: 'DM Mono', monospace; font-size: 14px">{{r.valor}}</div>
+            <div style="{{r.badgeStyle}}">{{r.badge}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="font-size: 12px; color: #9AA3AE">Sem comunicado do mês, usa o último valor oficial. É estimativa.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { modo: 'pendente', valorTxt: '55,87' };
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    function fmt(n) { return 'R$ ' + n.toFixed(2).replace('.', ','); }
+    function num(t) { var v = parseFloat(String(t).replace(/\./g, '').replace(',', '.')); return isNaN(v) ? 0 : v; }
+    var badge = 'font-size: 11px; font-weight: 700; border-radius: 8px; padding: 2px 8px;';
+    var B = {
+      rec: badge + 'background: #16352A; color: #6FD6AE;',
+      conf: badge + 'background: #3A2A17; color: #F0A862;',
+      anu: badge + 'background: #1D2A4A; color: #9DB4F5;',
+      est: badge + 'background: #232831; color: #9AA3AE;'
+    };
+    var pago = s.modo === 'pago';
+    var pvValor = pago ? num(s.valorTxt) : 55.87;
+    var rec = pago ? pvValor : 0;
+    var conf = pago ? 0 : 55.87;
+    var anu = 69.30 + 82.65;
+    var est = 78.39 + 93.84;
+    var total = rec + conf + anu + est;
+    function w(v, c) { return 'width: ' + (v / total * 100).toFixed(1) + '%; background: ' + c + ';'; }
+    var rows = [
+      { ticker: 'PVBI11', sub: '151 × R$ 0,37 · 07/10', valor: fmt(pvValor), badge: pago ? 'Recebido' : 'A confirmar', badgeStyle: pago ? B.rec : B.conf },
+      { ticker: 'KNRI11', sub: '63 × R$ 1,10 · 15/10', valor: fmt(69.30), badge: 'Anunciado', badgeStyle: B.anu },
+      { ticker: 'HGRU11', sub: '87 × R$ 0,95 · 15/10', valor: fmt(82.65), badge: 'Anunciado', badgeStyle: B.anu },
+      { ticker: 'HGLG11', sub: '67 × R$ 1,17 (último) · ~15/10', valor: fmt(78.39), badge: 'Estimado', badgeStyle: B.est },
+      { ticker: 'XPML11', sub: '102 × R$ 0,92 (último) · ~23/10', valor: fmt(93.84), badge: 'Estimado', badgeStyle: B.est }
+    ];
+    return {
+      total: fmt(total),
+      rec: fmt(rec), conf: fmt(conf), anu: fmt(anu), est: fmt(est),
+      barRec: w(rec, '#7FE0BE'), barConf: w(conf, '#F0A862'), barAnu: w(anu, '#9DB4F5'), barEst: w(est, '#6B7380'),
+      showConfirm: !pago,
+      isPendente: s.modo === 'pendente',
+      isAjustando: s.modo === 'ajustando',
+      valorTxt: s.valorTxt,
+      confirmar: function () { self.setState({ modo: 'pago', valorTxt: '55,87' }); },
+      ajustar: function () { self.setState({ modo: 'ajustando' }); },
+      digitar: function (e) { self.setState({ valorTxt: e.target.value }); },
+      salvar: function () { self.setState({ modo: 'pago' }); },
+      rows: rows
+    };
+  }
+}
+</script>
+</body>
+</html>

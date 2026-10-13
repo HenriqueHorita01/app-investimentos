@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Novo lançamento (escuro)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=DM+Sans:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#3DBE8E;text-decoration:none}a:hover{color:#6FD6AE}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0E1116; font-family: 'DM Sans', sans-serif; color: #E8EAED; display: flex; flex-direction: column">
+  <div style="flex: 1; padding: 24px 20px 0; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+    <div style="font-size: 22px; font-weight: 700">Novo lançamento</div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; background: #232831; border-radius: 12px; padding: 4px">
+      <sc-for list="{{tipos}}" as="t" hint-placeholder-count="3">
+        <button type="button" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+      </sc-for>
+    </div>
+
+    <div style="background: #171B22; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="ativo" style="font-size: 12px; color: #9AA3AE">Ativo</label>
+        <select id="ativo" style="font-family: inherit; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; background: #0E1116; color: #E8EAED">
+          <option>HGLG11 — FII</option>
+          <option>XPML11 — FII</option>
+          <option>CDB Banco X — Renda fixa</option>
+        </select>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="data" style="font-size: 12px; color: #9AA3AE">Data</label>
+        <input id="data" value="09/10/2026" style="font-family: inherit; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; background: #0E1116; color: #E8EAED">
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="qtd" style="font-size: 12px; color: #9AA3AE">{{qtdLabel}}</label>
+          <input id="qtd" value="{{qtdValor}}" style="font-family: 'DM Mono', monospace; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; min-width: 0; background: #0E1116; color: #E8EAED">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="preco" style="font-size: 12px; color: #9AA3AE">{{precoLabel}}</label>
+          <input id="preco" value="{{precoValor}}" style="font-family: 'DM Mono', monospace; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; min-width: 0; background: #0E1116; color: #E8EAED">
+        </div>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid #232831; padding-top: 12px">
+        <div style="font-size: 13px; color: #9AA3AE">Total</div>
+        <div style="font-family: 'DM Mono', monospace; font-size: 20px">{{total}}</div>
+      </div>
+    </div>
+
+    <sc-if value="{{isAporte}}" hint-placeholder-val="{{ true }}">
+      <div style="background: #171B22; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+        <label for="obj" style="font-size: 12px; color: #9AA3AE">Reservar para objetivo (opcional)</label>
+        <select id="obj" style="font-family: inherit; font-size: 15px; padding: 12px; border: 1px solid #343B46; border-radius: 10px; background: #0E1116; color: #E8EAED">
+          <option>Nenhum — fica livre</option>
+          <option>Viagem Japão</option>
+          <option>Notebook novo</option>
+          <option>Presente aniversário</option>
+        </select>
+      </div>
+    </sc-if>
+
+    <button type="button" style="font-family: inherit; font-size: 16px; font-weight: 700; border: 0; border-radius: 14px; padding: 16px; background: #2FA57A; color: #0E1116">Salvar lançamento</button>
+  </div>
+
+  <nav style="background: #171B22; border-top: 1px solid #262C35; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 0 20px">
+    <a href="Main-escuro.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; padding: 6px 0; color: #9AA3AE"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Início</a>
+    <a href="Carteira-escuro.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; padding: 6px 0; color: #9AA3AE"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v9l7 5"></path></svg>Carteira</a>
+    <a href="Objetivos-escuro.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; padding: 6px 0; color: #9AA3AE"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle></svg>Objetivos</a>
+    <a href="Lancamento-escuro.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; padding: 6px 0; color: #3DBE8E; font-weight: 700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v8M8 12h8"></path></svg>Lançar</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tipo: 'aporte' };
+  }
+  renderVals() {
+    var self = this;
+    var tipo = this.state.tipo;
+    var base = 'font-family: inherit; font-size: 14px; font-weight: 700; border: 0; border-radius: 9px; padding: 10px 0; min-height: 44px; cursor: pointer;';
+    var tipos = [
+      { id: 'aporte', label: 'Aporte' },
+      { id: 'resgate', label: 'Resgate' },
+      { id: 'dividendo', label: 'Dividendo' }
+    ].map(function (t) {
+      var on = t.id === tipo;
+      return {
+        label: t.label,
+        style: base + (on ? 'background: #3A4250; color: #FFFFFF;' : 'background: transparent; color: #9AA3AE;'),
+        pick: function () { self.setState({ tipo: t.id }); }
+      };
+    });
+    var div = tipo === 'dividendo';
+    return {
+      tipos: tipos,
+      isAporte: tipo === 'aporte',
+      qtdLabel: div ? 'Cotas na data-com' : 'Quantidade',
+      qtdValor: div ? '67' : '10',
+      precoLabel: div ? 'Valor por cota' : 'Preço por cota',
+      precoValor: div ? 'R$ 1,17' : 'R$ 148,00',
+      total: div ? 'R$ 78,39' : 'R$ 1.480,00'
+    };
+  }
+}
+</script>
+</body>
+</html>
