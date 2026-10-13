@@ -7,5 +7,5 @@ Acompanhamento pessoal de carteira: aportes, dividendos, rendimento e reservas p
 - Esboço das telas: [docs/telas](docs/telas)
 
 ## Configuração
-1. Copie `.env.example` para `.env.local` e preencha com os dados do projeto Supabase.
-2. Aplique as migrations no Supabase.
+- Supabase: projeto `app-investimentos` (sa-east-1, São Paulo). Migration inicial já aplicada.
+- Copie `.env.example` para `.env.local` e preencha a chave pública (Supabase → Project Settings → API Keys).
