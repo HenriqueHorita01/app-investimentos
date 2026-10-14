@@ -1,0 +1,95 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+
+  --color-fundo: var(--fundo);
+  --color-cartao: var(--cartao);
+  --color-texto: var(--texto);
+  --color-texto-2: var(--texto-2);
+  --color-positivo: var(--positivo);
+  --color-reservado: var(--reservado);
+  --color-reservado-texto: var(--reservado-texto);
+  --color-negativo: var(--negativo);
+  --color-fii: var(--fii);
+  --color-acao: var(--acao);
+  --color-renda-fixa: var(--renda-fixa);
+  --color-linha: var(--linha);
+  --color-borda: var(--borda);
+  --color-campo: var(--campo);
+  --color-segmento: var(--segmento);
+  --color-segmento-ativo: var(--segmento-ativo);
+  --color-botao: var(--botao);
+  --color-destaque: var(--destaque);
+  --color-destaque-borda: var(--destaque-borda);
+  --color-destaque-texto-2: var(--destaque-texto-2);
+  --color-destaque-positivo: var(--destaque-positivo);
+}
+
+:root {
+  --fundo: #f3f4f6;
+  --cartao: #ffffff;
+  --texto: #12161c;
+  --texto-2: #5b6470;
+  --positivo: #0f6e52;
+  --reservado: #d9822b;
+  --reservado-texto: #a85f14;
+  --negativo: #b42318;
+  --fii: #2f5bd3;
+  --acao: #7c4dbd;
+  --renda-fixa: #0f6e52;
+  --linha: #eef0f2;
+  --borda: #e5e7eb;
+  --campo: #d1d5db;
+  --segmento: #e5e7eb;
+  --segmento-ativo: #ffffff;
+  --botao: #0f6e52;
+  --destaque: #12161c;
+  --destaque-borda: #12161c;
+  --destaque-texto-2: #c9ced6;
+  --destaque-positivo: #7fe0be;
+  color-scheme: light;
+}
+
+.dark {
+  --fundo: #0e1116;
+  --cartao: #171b22;
+  --texto: #e8eaed;
+  --texto-2: #9aa3ae;
+  --positivo: #3dbe8e;
+  --reservado: #e59a4e;
+  --reservado-texto: #e59a4e;
+  --negativo: #f87171;
+  --fii: #6b8ef0;
+  --acao: #b08ae8;
+  --renda-fixa: #2fa57a;
+  --linha: #232831;
+  --borda: #262c35;
+  --campo: #343b46;
+  --segmento: #232831;
+  --segmento-ativo: #3a4250;
+  --botao: #2fa57a;
+  --destaque: #1a2e27;
+  --destaque-borda: #24433a;
+  --destaque-texto-2: #a8c7ba;
+  --destaque-positivo: #7fe0be;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.campo {
+  @apply w-full min-w-0 rounded-[10px] border border-campo bg-cartao px-3 py-3 text-[15px] text-texto outline-none focus:border-positivo;
+}
+.rotulo {
+  @apply text-xs text-texto-2;
+}
