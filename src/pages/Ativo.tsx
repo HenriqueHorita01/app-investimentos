@@ -4,6 +4,7 @@ import {
   alterarDestino,
   alterarFinalidade,
   carregarCarteira,
+  criarMovimentacao,
   excluirAtivo,
   excluirMovimentacao,
   salvarCotacaoManual,
@@ -11,7 +12,7 @@ import {
   type AtivoComPosicao,
   type Carteira,
 } from '../lib/dados'
-import { LIVRE } from '../lib/calculos'
+import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { corObjetivo } from '../lib/objetivos'
 import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo } from '../lib/tipos'
@@ -111,6 +112,8 @@ export default function Ativo() {
           </div>
         </Cartao>
       )}
+
+      {!rv && a.movimentacoes.length > 0 && <FormCorrigirSaldo a={a} carteira={dados} aoSalvar={recarregar} />}
 
       {!ehReserva && p.valorAtual > 0.005 && <UsoDoAtivo a={a} objetivos={dados.objetivos} />}
 
@@ -267,6 +270,88 @@ function FormCotacao({ ticker, atual, aoSalvar }: { ticker: string; atual: Ativo
   )
 }
 
+function FormCorrigirSaldo({ a, carteira, aoSalvar }: { a: AtivoComPosicao; carteira: Carteira; aoSalvar: () => void }) {
+  const [aberto, setAberto] = useState(false)
+  const [data, setData] = useState(hojeSP())
+  const [saldo, setSaldo] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    setErro(null)
+    setAviso(null)
+    const v = lerNumero(saldo)
+    if (!(v >= 0)) return setErro('Informe o saldo bruto do extrato.')
+    if (data > hojeSP()) return setErro('A data não pode ser no futuro.')
+    const { calculado, ajustes } = ajustesParaSaldo(a, a.movimentacoes, carteira.cdi, data, v)
+    if (!ajustes.length) {
+      setAviso(`O saldo calculado já é ${formatarBRL(calculado)}. Nada a corrigir.`)
+      return
+    }
+    setSalvando(true)
+    try {
+      await criarMovimentacao(
+        ajustes.map((x) => ({
+          ativo_id: a.id,
+          data,
+          tipo: 'ajuste' as const,
+          quantidade: null,
+          preco_unitario: null,
+          valor_total: x.valor,
+          observacao: `Correção pelo extrato (calculado ${formatarBRL(calculado)}, extrato ${formatarBRL(v)})`,
+          objetivo_id: x.objetivo_id,
+        })),
+      )
+      setSaldo('')
+      setAberto(false)
+      aoSalvar()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <button type="button" onClick={() => setAberto(true)} className="rounded-[14px] border border-campo bg-cartao p-3 text-sm font-bold">
+        Corrigir saldo pelo extrato
+      </button>
+    )
+  }
+
+  return (
+    <Cartao>
+      <form onSubmit={salvar} className="flex flex-col gap-3">
+        <div className="text-sm font-bold">Corrigir saldo pelo extrato</div>
+        <div className="text-xs text-texto-2">
+          Digite o saldo bruto que aparece no banco. O app grava a diferença como ajuste de rendimento e continua calculando pelo CDI a partir dele.
+        </div>
+        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-2">
+          <Campo id="aj-data" rotulo="Data do extrato">
+            <input id="aj-data" type="date" className="campo !px-2 !text-sm" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
+          </Campo>
+          <Campo id="aj-saldo" rotulo="Saldo bruto">
+            <input id="aj-saldo" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={saldo} onChange={(e) => setSaldo(e.target.value)} />
+          </Campo>
+        </div>
+        {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
+        {aviso && <div className="text-sm text-texto-2">{aviso}</div>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={salvando} className="flex-1 rounded-xl bg-botao p-3 text-sm font-bold text-white disabled:opacity-60">
+            {salvando ? 'Salvando…' : 'Corrigir saldo'}
+          </button>
+          <button type="button" onClick={() => setAberto(false)} className="rounded-xl border border-campo px-4 text-sm">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </Cartao>
+  )
+}
+
 function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
   const [erro, setErro] = useState<string | null>(null)
   const rv = ehRendaVariavel(a.tipo)
@@ -315,13 +400,14 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
       <div className="text-sm font-bold">Lançamentos</div>
       {lista.length === 0 && <div className="text-[13px] text-texto-2">Nenhum lançamento ainda.</div>}
       {lista.map((m) => {
-        const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate')
+        const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate' || (!rv && m.tipo === 'ajuste'))
+        const nome = !rv && m.tipo === 'ajuste' ? 'Ajuste de saldo' : NOME_MOV[m.tipo]
         const opcoes = objetivos.filter((o) => !o.concluido || o.id === m.objetivo_id)
         return (
           <div key={m.id} className="flex flex-col gap-1.5 border-b border-linha pb-2.5 last:border-0 last:pb-0">
             <div className="flex items-center justify-between gap-2 text-[13px]">
               <div className="min-w-0">
-                <span className="font-bold">{NOME_MOV[m.tipo]}</span>
+                <span className="font-bold">{nome}</span>
                 <span className="text-texto-2">
                   {' · '}
                   {formatarData(m.data)}
@@ -329,12 +415,15 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                 </span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className={`font-mono ${m.tipo === 'resgate' ? 'text-negativo' : ''}`}>{formatarBRL(m.valor_total)}</span>
+                <span className={`font-mono ${m.tipo === 'resgate' || m.valor_total < 0 ? 'text-negativo' : ''}`}>
+                  {m.tipo === 'ajuste' ? formatarBRLComSinal(m.valor_total) : formatarBRL(m.valor_total)}
+                </span>
                 <button type="button" onClick={() => excluir(m)} aria-label="Excluir lançamento" title="Excluir lançamento" className="rounded p-1 text-texto-2 hover:text-negativo">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
                 </button>
               </div>
             </div>
+            {m.observacao && <div className="text-xs text-texto-2">{m.observacao}</div>}
             {comDestino && (opcoes.length > 0 || m.objetivo_id) && (
               <label className="flex items-center gap-2 text-xs text-texto-2">
                 Destino
