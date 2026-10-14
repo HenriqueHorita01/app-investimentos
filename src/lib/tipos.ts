@@ -1,6 +1,8 @@
 export type TipoAtivo = 'fii' | 'acao' | 'cdb' | 'lci_lca' | 'tesouro' | 'etf' | 'outro'
 export type Indexador = 'cdi' | 'ipca' | 'pre' | 'selic' | 'nenhum'
 export type TipoMovimentacao = 'aporte' | 'resgate' | 'dividendo' | 'jcp' | 'amortizacao' | 'ajuste'
+/** investimento = carteira normal; reserva_emergencia = aba Reserva, fora do patrimônio. */
+export type Finalidade = 'investimento' | 'reserva_emergencia'
 
 export interface Ativo {
   id: string
@@ -12,6 +14,7 @@ export interface Ativo {
   taxa: number | null
   vencimento: string | null
   ativo: boolean
+  finalidade: Finalidade
   criado_em: string
 }
 
@@ -24,7 +27,25 @@ export interface Movimentacao {
   preco_unitario: number | null
   valor_total: number
   observacao: string | null
+  /** null = livre (conta no patrimônio). */
+  objetivo_id: string | null
   criado_em: string
+}
+
+export interface Objetivo {
+  id: string
+  nome: string
+  valor_alvo: number
+  prazo: string | null
+  cor: string | null
+  concluido: boolean
+  criado_em: string
+}
+
+export interface CdiDia {
+  data: string
+  /** % ao dia, ex.: 0.0508 */
+  taxa_dia: number
 }
 
 export interface Cotacao {
