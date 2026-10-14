@@ -245,3 +245,20 @@ export async function salvarMetaReserva(meta: number | null): Promise<void> {
     .upsert({ user_id, meta_reserva: meta, atualizado_em: new Date().toISOString() }, { onConflict: 'user_id' })
   erro(error)
 }
+
+// ============ Reservar parte do livre ============
+
+/**
+ * Reserva `valor` (em reais, valor atual) da parte livre do ativo para o objetivo.
+ * Divide os lançamentos livres na proporção valor ÷ livre (função no banco, atômica).
+ */
+export async function reservarParteParaObjetivo(ativoId: string, objetivoId: string, fracao: number): Promise<void> {
+  const { error } = await supabase.rpc('reservar_para_objetivo', { p_ativo: ativoId, p_objetivo: objetivoId, p_fracao: fracao })
+  erro(error)
+}
+
+/** Devolve ao livre tudo o que o ativo tem reservado para o objetivo. */
+export async function liberarDoObjetivo(ativoId: string, objetivoId: string): Promise<void> {
+  const { error } = await supabase.from('movimentacoes').update({ objetivo_id: null }).eq('ativo_id', ativoId).eq('objetivo_id', objetivoId)
+  erro(error)
+}
