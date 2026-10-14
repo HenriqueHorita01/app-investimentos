@@ -226,3 +226,22 @@ export async function salvarCotacaoManual(ticker: string, data: string, fechamen
   }
   erro(error)
 }
+
+// ============ Preferências ============
+
+export async function carregarMetaReserva(): Promise<number | null> {
+  const { data, error } = await supabase.from('preferencias').select('meta_reserva').maybeSingle()
+  erro(error)
+  return data?.meta_reserva != null ? Number(data.meta_reserva) : null
+}
+
+/** Grava a meta da reserva (null remove a meta). */
+export async function salvarMetaReserva(meta: number | null): Promise<void> {
+  const { data: s } = await supabase.auth.getSession()
+  const user_id = s.session?.user.id
+  if (!user_id) throw new Error('Sessão expirada. Entre de novo.')
+  const { error } = await supabase
+    .from('preferencias')
+    .upsert({ user_id, meta_reserva: meta, atualizado_em: new Date().toISOString() }, { onConflict: 'user_id' })
+  erro(error)
+}
