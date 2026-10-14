@@ -93,3 +93,6 @@ export function ehRendaVariavel(tipo: TipoAtivo): boolean {
 export function rotuloAtivo(a: Pick<Ativo, 'ticker' | 'nome'>): string {
   return a.ticker || a.nome
 }
+
+/** Observação dos dividendos lançados de uma vez ao cadastrar uma posição antiga. */
+export const OBS_PROVENTOS_ANTERIORES = 'Proventos recebidos antes do cadastro'

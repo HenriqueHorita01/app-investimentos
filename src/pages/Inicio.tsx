@@ -4,6 +4,7 @@ import { resumir } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarBRLInteiro, formatarMesAno, formatarPercentual, hojeSP } from '../lib/formato'
 import { useCarregar } from '../lib/useCarregar'
 import { corObjetivo } from '../lib/objetivos'
+import { OBS_PROVENTOS_ANTERIORES } from '../lib/tipos'
 import { useAuth } from '../auth/AuthProvider'
 import { BotaoTema } from '../components/BotaoTema'
 import { Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
@@ -37,7 +38,8 @@ export default function Inicio() {
   const mes = hoje.slice(0, 7)
   const proventosMes = ativos
     .flatMap((a) => a.movimentacoes)
-    .filter((m) => (m.tipo === 'dividendo' || m.tipo === 'jcp') && m.data.startsWith(mes))
+    // Dividendos antigos lançados no cadastro não são deste mês.
+    .filter((m) => (m.tipo === 'dividendo' || m.tipo === 'jcp') && m.data.startsWith(mes) && m.observacao !== OBS_PROVENTOS_ANTERIORES)
     .reduce((s, m) => s + m.valor_total, 0)
   const semCotacao = ativos.filter((a) => a.posicao.semCotacao && a.posicao.quantidade > 0)
   const totalInvestimentos = r.patrimonio + r.reservado
