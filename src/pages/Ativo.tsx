@@ -356,7 +356,6 @@ function FormCorrigirSaldo({ a, carteira, aoSalvar }: { a: AtivoComPosicao; cart
 
 function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
   const [erro, setErro] = useState<string | null>(null)
-  const [aberto, setAberto] = useState<string | null>(null)
   const [editando, setEditando] = useState<string | null>(null)
   const rv = ehRendaVariavel(a.tipo)
   const lista = [...a.movimentacoes].reverse()
@@ -373,7 +372,6 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
     setErro(null)
     try {
       await excluirMovimentacao(m.id)
-      setAberto(null)
       aoMudar()
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -402,16 +400,12 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
 
   return (
     <Cartao className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between">
-        <div className="text-sm font-bold">Lançamentos</div>
-        {lista.length > 0 && <div className="text-xs text-texto-2">Toque para editar</div>}
-      </div>
+      <div className="text-sm font-bold">Lançamentos</div>
       {lista.length === 0 && <div className="text-[13px] text-texto-2">Nenhum lançamento ainda.</div>}
       {lista.map((m) => {
         const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate' || (!rv && m.tipo === 'ajuste'))
         const nome = !rv && m.tipo === 'ajuste' ? 'Ajuste de saldo' : NOME_MOV[m.tipo]
         const opcoes = objetivos.filter((o) => !o.concluido || o.id === m.objetivo_id)
-        const estaAberto = aberto === m.id
 
         if (editando === m.id) {
           return (
@@ -424,7 +418,6 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                 aoCancelar={() => setEditando(null)}
                 aoSalvar={() => {
                   setEditando(null)
-                  setAberto(null)
                   aoMudar()
                 }}
               />
@@ -436,8 +429,11 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
           <div key={m.id} className="flex flex-col gap-1.5 border-b border-linha pb-2.5 last:border-0 last:pb-0">
             <button
               type="button"
-              onClick={() => setAberto(estaAberto ? null : m.id)}
-              aria-expanded={estaAberto}
+              onClick={() => {
+                setErro(null)
+                setEditando(m.id)
+              }}
+              aria-label={`Editar ${nome.toLowerCase()} de ${formatarData(m.data)}`}
               className="flex items-center justify-between gap-2 text-left text-[13px]"
             >
               <div className="min-w-0">
@@ -469,23 +465,23 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                 </select>
               </label>
             )}
-            {estaAberto && (
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setErro(null)
-                    setEditando(m.id)
-                  }}
-                  className="flex-1 rounded-lg border border-campo py-2 text-[13px] font-bold"
-                >
-                  Editar
-                </button>
-                <button type="button" onClick={() => excluir(m)} className="flex-1 rounded-lg border border-campo py-2 text-[13px] font-bold text-negativo">
-                  Excluir
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setErro(null)
+                  setEditando(m.id)
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-campo px-3 py-1.5 text-xs font-bold"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M14 6l4 4" /></svg>
+                Editar
+              </button>
+              <button type="button" onClick={() => excluir(m)} className="flex items-center gap-1.5 rounded-lg border border-campo px-3 py-1.5 text-xs font-bold text-negativo">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                Excluir
+              </button>
+            </div>
           </div>
         )
       })}
