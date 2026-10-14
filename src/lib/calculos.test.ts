@@ -128,19 +128,32 @@ describe('renda fixa pelo CDI', () => {
 })
 
 describe('resumo', () => {
-  it('patrimônio é só o livre; objetivos e reserva de emergência ficam de fora', () => {
-    const carteira = calcularPosicao(FII, [mov('aporte', 1000, 10), mov('aporte', 500, 5, { objetivo_id: 'viagem' })], 110)
-    const reserva = calcularPosicao(CDB100, [mov('aporte', 5000)], null)
+  it('patrimônio livre = rendimento da renda fixa + dividendos (exemplo do SPEC)', () => {
+    // Investiu 10.000 em CDB e 500 em ações; o CDB rendeu 100 e as ações pagaram 5 de dividendos.
+    const cdb = calcularPosicao({ ...CDB100, indexador: 'pre' }, [mov('aporte', 10000), mov('ajuste', 100)], null)
+    const acao = calcularPosicao({ ...FII, tipo: 'acao' }, [mov('aporte', 500, 10), mov('dividendo', 5)], 50)
     const r = resumir([
-      { finalidade: 'investimento', posicao: carteira },
-      { finalidade: 'reserva_emergencia', posicao: reserva },
+      { tipo: 'cdb', finalidade: 'investimento', posicao: cdb },
+      { tipo: 'acao', finalidade: 'investimento', posicao: acao },
     ])
-    expect(r.patrimonio).toBeCloseTo(1100)
-    expect(r.investido).toBeCloseTo(1000)
-    expect(r.variacao).toBeCloseTo(100)
-    expect(r.variacaoPercentual).toBeCloseTo(0.1)
+    expect(r.patrimonio).toBeCloseTo(105)
+    expect(r.rendimentoRendaFixa).toBeCloseTo(100)
+    expect(r.proventos).toBeCloseTo(5)
+    expect(r.investido).toBeCloseTo(10500)
+  })
+
+  it('valorização das cotas, objetivos e reserva de emergência ficam fora do patrimônio livre', () => {
+    const fii = calcularPosicao(FII, [mov('aporte', 1000, 10), mov('aporte', 500, 5, { objetivo_id: 'viagem' }), mov('dividendo', 12)], 110)
+    const reserva = calcularPosicao(CDB100, [mov('aporte', 5000), mov('ajuste', 300)], null)
+    const r = resumir([
+      { tipo: 'fii', finalidade: 'investimento', posicao: fii },
+      { tipo: 'cdb', finalidade: 'reserva_emergencia', posicao: reserva },
+    ])
+    expect(r.patrimonio).toBeCloseTo(12)
+    expect(r.valorizacao).toBeCloseTo(100)
+    expect(r.valorInvestido).toBeCloseTo(1100)
     expect(r.reservado).toBeCloseTo(550)
-    expect(r.reservaEmergencia).toBe(5000)
+    expect(r.reservaEmergencia).toBeCloseTo(5300)
   })
 })
 

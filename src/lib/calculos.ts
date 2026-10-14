@@ -194,56 +194,71 @@ export function disponivel(p: Posicao, rendaVariavel: boolean, dest: string): nu
 }
 
 export interface ItemResumo {
+  tipo: Ativo['tipo']
   finalidade: Finalidade
   posicao: Posicao
 }
 
 export interface Resumo {
-  /** Patrimônio = parte livre dos investimentos (sem objetivos e sem reserva de emergência). */
+  /**
+   * Patrimônio livre = só o excedente gerado pelos investimentos de longo prazo:
+   * rendimento da renda fixa (saldo − aplicado, parte livre) + dividendos/JCP de ações e FIIs.
+   * O dinheiro investido, a valorização das cotas, a reserva de emergência e o que está
+   * reservado para objetivos ficam de fora.
+   */
   patrimonio: number
+  /** Rendimento bruto da renda fixa (parte livre). */
+  rendimentoRendaFixa: number
+  /** Dividendos e JCP recebidos (ações/FIIs da carteira). */
+  proventos: number
+  /** Custo do que está investido a longo prazo (parte livre). */
   investido: number
-  variacao: number
-  variacaoPercentual: number
+  /** Valor atual do que está investido a longo prazo (parte livre). */
+  valorInvestido: number
+  /** Valorização das cotas de ações/FIIs (parte livre), não realizada. */
+  valorizacao: number
   /** Reservado para objetivos (conta como investimento, não como patrimônio). */
   reservado: number
   reservadoInvestido: number
   /** Reserva de emergência (aba própria, fora do patrimônio). */
   reservaEmergencia: number
   reservaInvestido: number
-  proventos: number
 }
 
 export function resumir(itens: ItemResumo[]): Resumo {
   const r: Resumo = {
     patrimonio: 0,
+    rendimentoRendaFixa: 0,
+    proventos: 0,
     investido: 0,
-    variacao: 0,
-    variacaoPercentual: 0,
+    valorInvestido: 0,
+    valorizacao: 0,
     reservado: 0,
     reservadoInvestido: 0,
     reservaEmergencia: 0,
     reservaInvestido: 0,
-    proventos: 0,
   }
-  for (const { finalidade, posicao: p } of itens) {
-    r.proventos += p.proventos
+  for (const { tipo, finalidade, posicao: p } of itens) {
     if (finalidade === 'reserva_emergencia') {
       r.reservaEmergencia += p.valorAtual
       r.reservaInvestido += p.investido
       continue
     }
+    r.proventos += p.proventos
+    const rv = ehRendaVariavel(tipo)
     for (const [d, parcela] of Object.entries(p.porDestino)) {
       if (d === LIVRE) {
-        r.patrimonio += parcela.valorAtual
         r.investido += parcela.investido
+        r.valorInvestido += parcela.valorAtual
+        if (rv) r.valorizacao += parcela.valorAtual - parcela.investido
+        else r.rendimentoRendaFixa += parcela.valorAtual - parcela.investido
       } else {
         r.reservado += parcela.valorAtual
         r.reservadoInvestido += parcela.investido
       }
     }
   }
-  r.variacao = r.patrimonio - r.investido
-  r.variacaoPercentual = r.investido > 0 ? r.variacao / r.investido : 0
+  r.patrimonio = r.rendimentoRendaFixa + r.proventos
   return r
 }
 
