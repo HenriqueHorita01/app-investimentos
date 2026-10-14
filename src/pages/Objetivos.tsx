@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { atualizarObjetivo, carregarCarteira, criarObjetivo, excluirObjetivo } from '../lib/dados'
+import { atualizarObjetivo, carregarCarteira, criarObjetivo, excluirObjetivo, liberarDoObjetivo, type AtivoComPosicao } from '../lib/dados'
 import type { ProgressoObjetivo } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarBRLInteiro, formatarData, hojeSP, lerNumero } from '../lib/formato'
 import { CORES_OBJETIVO, corObjetivo } from '../lib/objetivos'
 import { useCarregar } from '../lib/useCarregar'
 import type { Objetivo } from '../lib/tipos'
 import { Campo, Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
+import { ReservarParte } from '../components/ReservarParte'
 
 export default function Objetivos() {
   const [params, setParams] = useSearchParams()
@@ -84,13 +85,24 @@ export default function Objetivos() {
       )}
 
       {lista.map((p) => (
-        <CartaoObjetivo key={p.objetivo.id} p={p} aoMudar={recarregar} />
+        <CartaoObjetivo key={p.objetivo.id} p={p} ativos={dados.ativos} todos={dados.progresso} aoMudar={recarregar} />
       ))}
     </>
   )
 }
 
-function CartaoObjetivo({ p, aoMudar }: { p: ProgressoObjetivo; aoMudar: () => void }) {
+function CartaoObjetivo({
+  p,
+  ativos,
+  todos,
+  aoMudar,
+}: {
+  p: ProgressoObjetivo
+  ativos: AtivoComPosicao[]
+  todos: ProgressoObjetivo[]
+  aoMudar: () => void
+}) {
+  const [usando, setUsando] = useState(false)
   const o = p.objetivo
   const [editando, setEditando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -150,17 +162,46 @@ function CartaoObjetivo({ p, aoMudar }: { p: ProgressoObjetivo; aoMudar: () => v
       {p.ativos.length > 0 ? (
         <div className="flex flex-col gap-1.5 border-t border-linha pt-2.5">
           {p.ativos.map((u) => (
-            <Link key={u.ativoId} to={`/ativo/${u.ativoId}`} className="flex justify-between text-[13px]">
-              <span className="text-positivo">{u.rotulo}</span>
-              <span className="font-mono">{formatarBRL(u.valorAtual)}</span>
-            </Link>
+            <div key={u.ativoId} className="flex items-center justify-between gap-2 text-[13px]">
+              <Link to={`/ativo/${u.ativoId}`} className="min-w-0 truncate text-positivo">{u.rotulo}</Link>
+              <span className="flex shrink-0 items-center gap-3">
+                <span className="font-mono">{formatarBRL(u.valorAtual)}</span>
+                <button
+                  type="button"
+                  className="text-xs font-bold text-texto-2"
+                  onClick={() => {
+                    if (confirm(`Liberar ${formatarBRL(u.valorAtual)} de ${u.rotulo}? Volta a ser investimento livre.`)) acao(() => liberarDoObjetivo(u.ativoId, o.id))
+                  }}
+                >
+                  Liberar
+                </button>
+              </span>
+            </div>
           ))}
         </div>
       ) : (
-        <div className="text-[13px] text-texto-2">Nada reservado ainda. Em <b>Lançar</b>, escolha este objetivo no destino do aporte.</div>
+        <div className="text-[13px] text-texto-2">
+          Nada reservado ainda. Use <b>Usar investimento</b> para separar parte de algo que você já tem, ou <b>+ Aporte</b> para um dinheiro novo.
+        </div>
+      )}
+
+      {usando && (
+        <ReservarParte
+          ativos={ativos}
+          objetivos={todos}
+          objetivoFixo={o.id}
+          aoCancelar={() => setUsando(false)}
+          aoSalvar={() => {
+            setUsando(false)
+            aoMudar()
+          }}
+        />
       )}
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-linha pt-2.5 text-[13px] font-bold">
+        {!o.concluido && !usando && (
+          <button type="button" className="text-positivo" onClick={() => setUsando(true)}>Usar investimento</button>
+        )}
         {!o.concluido && (
           <Link to={`/lancar?objetivo=${o.id}`} className="text-positivo">+ Aporte</Link>
         )}
@@ -173,7 +214,7 @@ function CartaoObjetivo({ p, aoMudar }: { p: ProgressoObjetivo; aoMudar: () => v
           className="text-negativo"
           onClick={() => {
             const msg = p.valorAtual > 0
-              ? `Desistir de "${o.nome}"? Os ${formatarBRL(p.valorAtual)} reservados voltam para o patrimônio livre. Os lançamentos continuam.`
+              ? `Desistir de "${o.nome}"? Os ${formatarBRL(p.valorAtual)} reservados voltam a ser investimento livre. Os lançamentos continuam.`
               : `Excluir o objetivo "${o.nome}"?`
             if (confirm(msg)) acao(() => excluirObjetivo(o.id))
           }}

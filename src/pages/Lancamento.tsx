@@ -298,7 +298,7 @@ export default function Lancamento() {
               <Link to="/objetivos?novo=1&voltar=/lancar" className="text-xs text-positivo">+ Novo objetivo</Link>
             </div>
             <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setErro(null) }}>
-              <option value="">{aba === 'aporte' ? 'Nenhum — fica livre (patrimônio)' : 'Livre (patrimônio)'}</option>
+              <option value="">{aba === 'aporte' ? 'Nenhum — fica livre' : 'Livre'}</option>
               {objetivos.map((o) => (
                 <option key={o.id} value={o.id}>{o.nome}</option>
               ))}

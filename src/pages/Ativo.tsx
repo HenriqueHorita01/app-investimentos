@@ -22,6 +22,7 @@ import { corObjetivo } from '../lib/objetivos'
 import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
+import { ReservarParte } from '../components/ReservarParte'
 
 const NOME_MOV: Record<Movimentacao['tipo'], string> = {
   aporte: 'Aporte',
@@ -138,7 +139,7 @@ export default function Ativo() {
 
       {!rv && a.movimentacoes.length > 0 && <FormCorrigirSaldo a={a} carteira={dados} aoSalvar={recarregar} />}
 
-      {!ehReserva && p.valorAtual > 0.005 && <UsoDoAtivo a={a} objetivos={dados.objetivos} />}
+      {!ehReserva && p.valorAtual > 0.005 && <UsoDoAtivo a={a} carteira={dados} aoMudar={recarregar} />}
 
       {rv && a.ticker && <FormCotacao ticker={a.ticker} atual={a} aoSalvar={recarregar} />}
 
@@ -312,7 +313,9 @@ function Dado({ rotulo, children, cor = '' }: { rotulo: string; children: ReactN
   )
 }
 
-function UsoDoAtivo({ a, objetivos }: { a: AtivoComPosicao; objetivos: Objetivo[] }) {
+function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
+  const [reservando, setReservando] = useState(false)
+  const objetivos: Objetivo[] = carteira.objetivos
   const p = a.posicao
   const total = p.valorAtual
   const partes = Object.entries(p.porDestino)
@@ -336,10 +339,24 @@ function UsoDoAtivo({ a, objetivos }: { a: AtivoComPosicao; objetivos: Objetivo[
           <span className="font-mono">{formatarBRL(x.valor)}</span>
         </div>
       ))}
-      <Link to={`/lancar?ativo=${a.id}`} className="mt-1 rounded-xl border border-campo p-3 text-center text-sm font-bold">
-        Reservar para objetivo
-      </Link>
-      <div className="text-xs text-texto-2">Para reservar o que já tem, troque o destino de um aporte na lista de lançamentos abaixo.</div>
+      {reservando ? (
+        <ReservarParte
+          ativos={carteira.ativos}
+          objetivos={carteira.progresso}
+          ativoFixo={a.id}
+          aoCancelar={() => setReservando(false)}
+          aoSalvar={() => {
+            setReservando(false)
+            aoMudar()
+          }}
+        />
+      ) : (
+        (p.porDestino[LIVRE]?.valorAtual ?? 0) >= 0.01 && (
+          <button type="button" onClick={() => setReservando(true)} className="mt-1 rounded-xl border border-campo p-3 text-center text-sm font-bold">
+            Reservar parte para um objetivo
+          </button>
+        )
+      )}
     </Cartao>
   )
 }
@@ -595,7 +612,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                   onChange={(e) => trocarDestino(m, e.target.value)}
                   aria-label={`Destino do ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)}`}
                 >
-                  <option value="">Livre (patrimônio)</option>
+                  <option value="">Livre</option>
                   {opcoes.map((o) => (
                     <option key={o.id} value={o.id}>{o.nome}</option>
                   ))}
