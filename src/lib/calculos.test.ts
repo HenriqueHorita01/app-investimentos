@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calcularPosicao, LIVRE, progressoObjetivos, resumir } from './calculos'
+import { ajustesParaSaldo, calcularPosicao, LIVRE, progressoObjetivos, resumir } from './calculos'
 import type { Ativo, CdiDia, Movimentacao, Objetivo, TipoMovimentacao } from './tipos'
 
 let n = 0
@@ -153,5 +153,45 @@ describe('objetivos', () => {
     expect(pr.investido).toBeCloseTo(1000)
     expect(pr.progresso).toBeCloseTo(0.55)
     expect(pr.ativos).toEqual([{ ativoId: 'a', rotulo: 'HGLG11', valorAtual: 1100, investido: 1000 }])
+  })
+})
+
+describe('ajuste de saldo (renda fixa)', () => {
+  const CDB115: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> = { tipo: 'cdb', indexador: 'cdi', taxa: 115, vencimento: null }
+  const cdi: CdiDia[] = [
+    { data: '2026-10-13', taxa_dia: 0.05 },
+    { data: '2026-10-14', taxa_dia: 0.05 },
+  ]
+
+  it('aplicação antiga: aporte + rendimento anterior, e o CDI rende por cima do saldo', () => {
+    const movs = [
+      mov('aporte', 5000, null, { data: '2026-10-13' }),
+      mov('ajuste', 123.2, null, { data: '2026-10-13' }),
+    ]
+    const p = calcularPosicao(CDB115, movs, null, cdi)
+    const fator = 1 + 0.0005 * 1.15
+    expect(p.investido).toBe(5000)
+    expect(p.valorAtual).toBeCloseTo(5123.2 * fator * fator)
+    expect(p.variacao).toBeCloseTo(5123.2 * fator * fator - 5000)
+  })
+
+  it('corrige pelo extrato dividindo a diferença entre os destinos', () => {
+    const movs = [
+      mov('aporte', 3000, null, { data: '2026-10-13' }),
+      mov('aporte', 1000, null, { data: '2026-10-13', objetivo_id: 'viagem' }),
+    ]
+    const { calculado, ajustes } = ajustesParaSaldo(CDB115, movs, cdi, '2026-10-14', 4100)
+    expect(calculado).toBeCloseTo(4000 * (1 + 0.0005 * 1.15))
+    const total = ajustes.reduce((s, a) => s + a.valor, 0)
+    expect(total).toBeCloseTo(4100 - calculado, 2)
+    expect(ajustes.find((a) => a.objetivo_id === 'viagem')!.valor).toBeCloseTo((4100 - calculado) / 4, 1)
+    const corrigido = calcularPosicao(CDB115, [...movs, ...ajustes.map((a) => mov('ajuste', a.valor, null, { data: '2026-10-14', objetivo_id: a.objetivo_id }))], null, cdi.filter((d) => d.data < '2026-10-14'))
+    expect(corrigido.valorAtual).toBeCloseTo(4100, 2)
+  })
+
+  it('não gera ajuste quando o extrato bate com o cálculo', () => {
+    const movs = [mov('aporte', 1000, null, { data: '2026-10-13' })]
+    const { ajustes } = ajustesParaSaldo(CDB115, movs, cdi, '2026-10-13', 1000)
+    expect(ajustes).toEqual([])
   })
 })

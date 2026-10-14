@@ -140,6 +140,11 @@ function rendaFixa(
       s.custo -= s.saldo > 0 ? s.custo * Math.min(1, r / s.saldo) : 0
       s.saldo -= r
       if (Math.abs(s.saldo) < EPS) s.saldo = 0
+    } else if (m.tipo === 'ajuste') {
+      // Ajuste de saldo: rendimento anterior ao cadastro ou correção pelo extrato.
+      // Mexe no saldo, não no custo (pode ser negativo).
+      s.saldo += valor(m)
+      if (s.saldo < -EPS) inconsistente = true
     }
   }
 
@@ -276,4 +281,38 @@ export function progressoObjetivos(
       ativos: usos.map(({ ativoId, rotulo, valorAtual, investido }) => ({ ativoId, rotulo, valorAtual, investido })),
     }
   })
+}
+
+/**
+ * Renda fixa: ajustes necessários para que o saldo bruto no início do dia `data`
+ * fique igual ao saldo do extrato. O CDI do próprio dia ainda não conta; ele entra
+ * por cima do saldo corrigido. A diferença é dividida entre os destinos (livre e
+ * objetivos) na proporção do saldo de cada um.
+ */
+export function ajustesParaSaldo(
+  ativo: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'>,
+  movs: Movimentacao[],
+  cdi: CdiDia[],
+  data: string,
+  saldoExtrato: number,
+): { calculado: number; ajustes: { objetivo_id: string | null; valor: number }[] } {
+  const p = calcularPosicao(
+    ativo,
+    movs.filter((m) => m.data <= data),
+    null,
+    cdi.filter((d) => d.data < data),
+  )
+  const calculado = p.valorAtual
+  const diferenca = Math.round((saldoExtrato - calculado) * 100) / 100
+  if (Math.abs(diferenca) < 0.01) return { calculado, ajustes: [] }
+  const partes = Object.entries(p.porDestino).filter(([, x]) => x.valorAtual > 0)
+  if (!partes.length) return { calculado, ajustes: [{ objetivo_id: null, valor: diferenca }] }
+  // Distribui em centavos; o resto do arredondamento fica na última parte.
+  let restante = diferenca
+  const ajustes = partes.map(([d, x], i) => {
+    const v = i === partes.length - 1 ? restante : Math.round(diferenca * (x.valorAtual / calculado) * 100) / 100
+    restante = Math.round((restante - v) * 100) / 100
+    return { objetivo_id: d === LIVRE ? null : d, valor: v }
+  })
+  return { calculado, ajustes: ajustes.filter((a) => a.valor !== 0) }
 }
