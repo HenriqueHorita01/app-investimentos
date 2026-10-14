@@ -23,7 +23,7 @@ export default function Lancamento() {
 
   const [aba, setAba] = useState<Aba>('aporte')
   const [ativoId, setAtivoId] = useState(params.get('ativo') ?? '')
-  /** '' = livre (patrimônio); senão, id do objetivo. */
+  /** '' = livre; senão, id do objetivo. */
   const [destino, setDestino] = useState(params.get('objetivo') ?? '')
   const [data, setData] = useState(hojeSP())
   const [qtd, setQtd] = useState('')
@@ -117,7 +117,7 @@ export default function Lancamento() {
       if (rendimentoAnterior !== 0) {
         lista.push({ ...principal, tipo: 'ajuste', valor_total: rendimentoAnterior, observacao: 'Rendimento anterior ao cadastro' })
       }
-      // Ação/FII antigo: aporte pelo preço médio + dividendos já recebidos (fora do patrimônio).
+      // Ação/FII antigo: aporte pelo preço médio + dividendos já recebidos.
       if (posicaoAntiga) {
         // Preço médio com 6 casas (limite da coluna) para o custo bater com o total investido.
         lista[0] = { ...principal, preco_unitario: Math.round(precoN * 1e6) / 1e6, observacao: 'Posição anterior ao cadastro' }
@@ -253,7 +253,7 @@ export default function Lancamento() {
                       </span>
                     </span>
                   )}
-                  {dividendosN > 0 && <span>Dividendos já recebidos: <span className="text-positivo">{formatarBRL(dividendosN)}</span> (entram no retorno, não no patrimônio)</span>}
+                  {dividendosN > 0 && <span>Dividendos já recebidos: <span className="text-positivo">{formatarBRL(dividendosN)}</span> (somam no patrimônio livre)</span>}
                 </div>
               )}
             </>
