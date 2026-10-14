@@ -11,6 +11,9 @@ O dinheiro tem duas dimensões:
 
 Um ativo pode servir vários objetivos. O que não está alocado é **livre**.
 
+- **Patrimônio** = só a parte livre. O que está reservado para objetivos continua sendo investimento (aparece na Carteira e rende), mas **não** conta no patrimônio até o objetivo ser desfeito.
+- **Reserva de emergência** é separada: o ativo inteiro é marcado como reserva, fica fora da Carteira e do patrimônio, e tem aba própria só para acompanhar o rendimento.
+
 ## 2. Stack
 
 | Camada | Escolha |
@@ -64,10 +67,13 @@ Toda tabela de usuário tem `user_id` e RLS: cada usuário só vê os próprios 
 - Mostrar sempre **bruto** e **líquido estimado**.
 
 ### Objetivos e alocações
-- Livre do ativo = valor atual − Σ alocações do ativo.
-- Progresso do objetivo = Σ alocações ÷ valor-alvo.
-- Uma alocação nunca pode passar do valor disponível do ativo. Validar no front e no banco.
-- Se o ativo desvalorizar abaixo do alocado, avisar o usuário.
+- A reserva é feita **por lançamento**: cada aporte/resgate tem um destino (`movimentacoes.objetivo_id`; vazio = livre).
+- Cada destino tem sua própria parte do ativo: cotas (renda variável) ou saldo corrido pelo CDI (renda fixa). O rendimento dessa parte **vai para o objetivo**.
+- Livre do ativo = valor atual da parte sem objetivo.
+- Progresso do objetivo = Σ valor atual das partes do objetivo ÷ valor-alvo.
+- Resgate de um destino não pode passar do disponível naquele destino (validado no front).
+- Desistir do objetivo (excluir) ou trocar o destino do lançamento devolve o valor ao livre.
+- A tabela `alocacoes` (valor fixo) ficou sem uso no front após essa decisão.
 
 ## 5. Proventos: projeção e confirmação
 
@@ -127,7 +133,9 @@ Referência visual em `docs/telas/` (arquivos `.dc.html`). Tema claro e escuro.
 5. **Detalhe do ativo**: cotas, custo médio, cotação, variação, retorno com proventos, histórico de proventos, uso por objetivo.
 6. **Proventos do mês**: total previsto, barra por status, card de confirmação, lista por ativo.
 
-Navegação inferior: Início, Carteira, Objetivos, Lançar.
+7. **Reserva**: saldo bruto da reserva de emergência, aplicado, rendimento e CDI atual.
+
+Navegação inferior: Início, Carteira, Objetivos, Reserva, Lançar.
 
 ### Paleta
 | Uso | Claro | Escuro |
@@ -156,7 +164,9 @@ Fontes: DM Sans (texto), DM Mono (números).
 - Site responsivo (PWA), não app nativo.
 - Alocação por valor fixo em reais.
 - Usuário único no início, mas com login e RLS desde o começo.
+- (14/10/2026) Reservado para objetivo não conta como patrimônio; rendimento da parte reservada vai para o objetivo; reserva de emergência por ativo inteiro, em aba própria; CDI automático (Fase 3) antecipado.
 
 ## 10. Em aberto
 
-- O rendimento do valor reservado vai para o objetivo ou fica livre? (Padrão inicial: fica no ativo; o objetivo mostra o valor alocado.)
+- ~~O rendimento do valor reservado vai para o objetivo ou fica livre?~~ Decidido: vai para o objetivo.
+- Dividendos de cotas reservadas: hoje não são atribuídos ao objetivo (proventos não fazem parte do patrimônio).
