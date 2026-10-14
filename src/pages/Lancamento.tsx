@@ -29,6 +29,9 @@ export default function Lancamento() {
   const [qtd, setQtd] = useState('')
   const [preco, setPreco] = useState('')
   const [valor, setValor] = useState('')
+  /** Renda fixa: aplicação feita antes de usar o app, que já tem rendimento. */
+  const [antiga, setAntiga] = useState(false)
+  const [saldoAtual, setSaldoAtual] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
@@ -54,6 +57,9 @@ export default function Lancamento() {
   const precoN = lerNumero(preco)
   const total = rv ? (qtdN > 0 && precoN > 0 ? arred2(qtdN * precoN) : 0) : lerNumero(valor) > 0 ? arred2(lerNumero(valor)) : 0
   const disp = ativo ? disponivel(ativo.posicao, rv, chaveDestino) : 0
+  const comRendimentoAnterior = !rv && aba === 'aporte' && antiga
+  const saldoN = lerNumero(saldoAtual)
+  const rendimentoAnterior = comRendimentoAnterior && saldoN > 0 && total > 0 ? arred2(saldoN - total) : 0
   const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${objetivos.find((o) => o.id === destino)?.nome ?? 'objetivo'}"`
 
   async function salvar(e: FormEvent) {
@@ -72,6 +78,7 @@ export default function Lancamento() {
       }
     } else {
       if (!(total > 0)) return setErro('Informe o valor.')
+      if (comRendimentoAnterior && !(saldoN > 0)) return setErro('Informe o saldo bruto atual (o que aparece no banco).')
       if (aba === 'resgate' && total > disp + 0.005) {
         return setErro(`O saldo ${nomeDestino} é ${formatarBRL(disp)}; o resgate não pode passar disso.`)
       }
@@ -79,7 +86,8 @@ export default function Lancamento() {
 
     setSalvando(true)
     try {
-      await criarMovimentacao({
+      const objetivo_id = usaDestino && destino ? destino : null
+      const principal = {
         ativo_id: ativo.id,
         data,
         tipo: aba,
@@ -87,8 +95,17 @@ export default function Lancamento() {
         preco_unitario: rv ? precoN : null,
         valor_total: total,
         observacao: null,
-        objetivo_id: usaDestino && destino ? destino : null,
-      })
+        objetivo_id,
+      }
+      // Aplicação antiga: aporte pelo valor aplicado + ajuste com o rendimento que já tinha.
+      await criarMovimentacao(
+        rendimentoAnterior !== 0
+          ? [
+              principal,
+              { ...principal, tipo: 'ajuste' as const, valor_total: rendimentoAnterior, observacao: 'Rendimento anterior ao cadastro' },
+            ]
+          : principal,
+      )
       navegar(`/ativo/${ativo.id}`)
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -169,7 +186,7 @@ export default function Lancamento() {
             {ehReserva && <div className="text-xs text-texto-2">Reserva de emergência: não entra no patrimônio.</div>}
           </div>
 
-          <Campo id="data" rotulo="Data">
+          <Campo id="data" rotulo={comRendimentoAnterior ? 'Data do saldo' : 'Data'}>
             <input id="data" type="date" className="campo" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
           </Campo>
 
@@ -185,14 +202,36 @@ export default function Lancamento() {
               </Campo>
             </div>
           ) : (
-            <Campo id="valor" rotulo={aba === 'aporte' ? 'Valor aplicado' : 'Valor resgatado'}>
-              <input id="valor" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} />
-            </Campo>
+            <>
+              {aba === 'aporte' && (
+                <label className="flex items-start gap-3 text-sm">
+                  <input type="checkbox" className="mt-0.5 h-5 w-5 accent-[var(--positivo)]" checked={antiga} onChange={(e) => setAntiga(e.target.checked)} />
+                  <span>
+                    <b>Aplicação antiga (já rendeu)</b>
+                    <span className="block text-xs text-texto-2">Para registrar um dinheiro que já estava aplicado, com o saldo de hoje.</span>
+                  </span>
+                </label>
+              )}
+              <Campo id="valor" rotulo={aba === 'aporte' ? (antiga ? 'Valor que você aplicou' : 'Valor aplicado') : 'Valor resgatado'}>
+                <input id="valor" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} />
+              </Campo>
+              {comRendimentoAnterior && (
+                <Campo id="saldo" rotulo="Saldo bruto atual (no banco)">
+                  <input id="saldo" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={saldoAtual} onChange={(e) => setSaldoAtual(e.target.value)} />
+                </Campo>
+              )}
+              {comRendimentoAnterior && rendimentoAnterior !== 0 && (
+                <div className="text-xs text-texto-2">
+                  Rendimento até agora: <span className={rendimentoAnterior > 0 ? 'text-positivo' : 'text-negativo'}>{formatarBRL(rendimentoAnterior)}</span>. Use a
+                  data do saldo acima; a partir dela o app calcula pelo CDI.
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex items-baseline justify-between border-t border-linha pt-3">
-            <div className="text-[13px] text-texto-2">Total</div>
-            <div className="font-mono text-xl">{formatarBRL(total)}</div>
+            <div className="text-[13px] text-texto-2">{comRendimentoAnterior ? 'Saldo registrado' : 'Total'}</div>
+            <div className="font-mono text-xl">{formatarBRL(comRendimentoAnterior && saldoN > 0 ? saldoN : total)}</div>
           </div>
         </Cartao>
 

@@ -35,7 +35,7 @@ export default function NovoAtivo() {
       return
     }
     if (!rv && !nome.trim()) {
-      setErro('Informe um nome para o CDB. Ex.: CDB Banco X 110% CDI.')
+      setErro('Informe um nome. Ex.: Caixinha Turbo Nubank.')
       return
     }
     setSalvando(true)
@@ -94,8 +94,9 @@ export default function NovoAtivo() {
             </>
           ) : (
             <>
+              <div className="text-xs text-texto-2">Vale para CDB, caixinhas e contas que rendem um percentual do CDI.</div>
               <Campo id="nome" rotulo="Nome">
-                <input id="nome" className="campo" placeholder="CDB Banco X 110% CDI" value={nome} onChange={(e) => setNome(e.target.value)} required />
+                <input id="nome" className="campo" placeholder="Caixinha Turbo Nubank" value={nome} onChange={(e) => setNome(e.target.value)} required />
               </Campo>
               <div className="grid grid-cols-2 gap-3">
                 <Campo id="taxa" rotulo="Taxa (% do CDI)">

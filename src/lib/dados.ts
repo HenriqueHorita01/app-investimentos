@@ -157,7 +157,8 @@ export interface NovaMovimentacao {
   objetivo_id: string | null
 }
 
-export async function criarMovimentacao(nova: NovaMovimentacao): Promise<void> {
+/** Grava um ou mais lançamentos de uma vez (tudo ou nada). */
+export async function criarMovimentacao(nova: NovaMovimentacao | NovaMovimentacao[]): Promise<void> {
   const { error } = await supabase.from('movimentacoes').insert(nova)
   erro(error)
 }
