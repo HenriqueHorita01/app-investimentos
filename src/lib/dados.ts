@@ -133,6 +133,13 @@ export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
   return data as Ativo
 }
 
+export type EdicaoAtivo = Partial<Pick<Ativo, 'tipo' | 'ticker' | 'nome' | 'instituicao' | 'taxa' | 'vencimento' | 'finalidade'>>
+
+export async function atualizarAtivo(id: string, campos: EdicaoAtivo): Promise<void> {
+  const { error } = await supabase.from('ativos').update(campos).eq('id', id)
+  erro(error)
+}
+
 export async function alterarFinalidade(id: string, finalidade: Finalidade): Promise<void> {
   const { error } = await supabase.from('ativos').update({ finalidade }).eq('id', id)
   erro(error)

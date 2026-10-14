@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   alterarDestino,
   alterarFinalidade,
+  atualizarAtivo,
   atualizarMovimentacao,
   carregarCarteira,
   criarMovimentacao,
@@ -12,12 +13,13 @@ import {
   simularPosicao,
   type AtivoComPosicao,
   type Carteira,
+  type EdicaoAtivo,
   type EdicaoMovimentacao,
 } from '../lib/dados'
 import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { corObjetivo } from '../lib/objetivos'
-import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo } from '../lib/tipos'
+import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
 
@@ -35,6 +37,7 @@ export default function Ativo() {
   const navegar = useNavigate()
   const { dados, erro, carregando, recarregar } = useCarregar(carregarCarteira, [id])
   const [erroAcao, setErroAcao] = useState<string | null>(null)
+  const [editandoAtivo, setEditandoAtivo] = useState(false)
   const a = dados?.ativos.find((x) => x.id === id)
   const ehReserva = a?.finalidade === 'reserva_emergencia'
 
@@ -76,10 +79,28 @@ export default function Ativo() {
           </div>
           {ehReserva && <div className="mt-1 inline-block rounded bg-linha px-1.5 text-[11px] text-texto-2">Reserva de emergência · fora do patrimônio</div>}
         </div>
-        <Link to={`/lancar?ativo=${a.id}`} className="shrink-0 rounded-full bg-botao px-3.5 py-2 text-[13px] font-bold text-white">
-          + Lançar
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          {!editandoAtivo && (
+            <button type="button" onClick={() => setEditandoAtivo(true)} className="rounded-full border border-campo bg-cartao px-3.5 py-2 text-[13px] font-bold">
+              Editar
+            </button>
+          )}
+          <Link to={`/lancar?ativo=${a.id}`} className="rounded-full bg-botao px-3.5 py-2 text-[13px] font-bold text-white">
+            + Lançar
+          </Link>
+        </div>
       </div>
+
+      {editandoAtivo && (
+        <EditarAtivo
+          a={a}
+          aoCancelar={() => setEditandoAtivo(false)}
+          aoSalvar={() => {
+            setEditandoAtivo(false)
+            recarregar()
+          }}
+        />
+      )}
 
       {rv ? (
         <Cartao className="grid grid-cols-2 gap-3.5">
@@ -176,6 +197,109 @@ export default function Ativo() {
       </div>
       {erroAcao && <div role="alert" className="px-1 text-sm text-negativo">{erroAcao}</div>}
     </>
+  )
+}
+
+function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar: () => void; aoCancelar: () => void }) {
+  const rv = ehRendaVariavel(a.tipo)
+  const [tipo, setTipo] = useState<TipoAtivo>(a.tipo)
+  const [ticker, setTicker] = useState(a.ticker ?? '')
+  // Na renda variável, nome igual ao ticker = sem nome próprio (campo vazio).
+  const [nome, setNome] = useState(rv && a.nome === a.ticker ? '' : a.nome)
+  const [instituicao, setInstituicao] = useState(a.instituicao ?? '')
+  const [taxa, setTaxa] = useState(a.taxa != null ? String(a.taxa).replace('.', ',') : '')
+  const [vencimento, setVencimento] = useState(a.vencimento ?? '')
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  const tk = ticker.trim().toUpperCase()
+  const mudouTicker = rv && tk !== (a.ticker ?? '')
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    setErro(null)
+    let campos: EdicaoAtivo
+    if (rv) {
+      if (!/^[A-Z]{4}\d{1,2}[A-Z]?$/.test(tk)) return setErro('Ticker inválido. Ex.: HGLG11, PETR4.')
+      campos = { tipo, ticker: tk, nome: nome.trim() || tk, instituicao: instituicao.trim() || null }
+    } else {
+      const taxaN = lerNumero(taxa)
+      if (!nome.trim()) return setErro('Informe um nome.')
+      if (!(taxaN > 0)) return setErro('Informe a taxa (% do CDI). Ex.: 115.')
+      campos = { nome: nome.trim(), taxa: taxaN, vencimento: vencimento || null, instituicao: instituicao.trim() || null }
+    }
+    setSalvando(true)
+    try {
+      await atualizarAtivo(a.id, campos)
+      aoSalvar()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Cartao>
+      <form onSubmit={salvar} className="flex flex-col gap-3.5">
+        <div className="text-sm font-bold">Editar ativo</div>
+        {rv ? (
+          <>
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-segmento p-1" role="tablist" aria-label="Tipo de ativo">
+              {(['fii', 'acao'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tipo === t}
+                  onClick={() => setTipo(t)}
+                  className={`rounded-[9px] py-2 text-sm ${tipo === t ? 'bg-segmento-ativo font-bold shadow-sm' : 'text-texto-2'}`}
+                >
+                  {NOME_TIPO[t]}
+                </button>
+              ))}
+            </div>
+            <Campo id="ea-ticker" rotulo="Ticker">
+              <input id="ea-ticker" className="campo font-mono uppercase" value={ticker} onChange={(e) => setTicker(e.target.value)} />
+            </Campo>
+            {mudouTicker && (
+              <div className="text-xs text-reservado-texto">
+                As cotações são guardadas por ticker: com o ticker novo, informe a cotação de novo.
+              </div>
+            )}
+            <Campo id="ea-nome" rotulo="Nome (opcional)">
+              <input id="ea-nome" className="campo" value={nome} placeholder={tk} onChange={(e) => setNome(e.target.value)} />
+            </Campo>
+          </>
+        ) : (
+          <>
+            <Campo id="ea-nome" rotulo="Nome">
+              <input id="ea-nome" className="campo" value={nome} onChange={(e) => setNome(e.target.value)} />
+            </Campo>
+            <div className="grid grid-cols-2 gap-3">
+              <Campo id="ea-taxa" rotulo="Taxa (% do CDI)">
+                <input id="ea-taxa" className="campo font-mono" inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} />
+              </Campo>
+              <Campo id="ea-venc" rotulo="Vencimento">
+                <input id="ea-venc" type="date" className="campo !px-2 !text-sm" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+              </Campo>
+            </div>
+            <div className="text-xs text-texto-2">Mudar a taxa recalcula todo o rendimento desde a primeira aplicação.</div>
+          </>
+        )}
+        <Campo id="ea-inst" rotulo="Instituição / corretora (opcional)">
+          <input id="ea-inst" className="campo" value={instituicao} onChange={(e) => setInstituicao(e.target.value)} />
+        </Campo>
+        {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={salvando} className="flex-1 rounded-xl bg-botao p-3 text-sm font-bold text-white disabled:opacity-60">
+            {salvando ? 'Salvando…' : 'Salvar alterações'}
+          </button>
+          <button type="button" onClick={aoCancelar} className="rounded-xl border border-campo px-4 text-sm">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </Cartao>
   )
 }
 
