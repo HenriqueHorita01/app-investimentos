@@ -52,17 +52,28 @@ export default function Inicio() {
       {cabecalho}
 
       <div className="flex flex-col gap-1.5 rounded-2xl border border-destaque-borda bg-destaque p-5 text-white">
-        <div className="text-[13px] text-destaque-texto-2">Patrimônio livre</div>
+        <div className="text-[13px] text-destaque-texto-2">Patrimônio livre · o que seus investimentos geraram</div>
         <div className="font-mono text-[30px] font-medium">{formatarBRL(r.patrimonio)}</div>
-        <div className={`text-[13px] ${r.variacao < -0.005 ? 'text-destaque-negativo' : 'text-destaque-positivo'}`}>
-          {formatarBRLComSinal(r.variacao)} ({formatarPercentual(r.variacaoPercentual)}) desde o início
+        <div className="flex flex-col text-[13px] text-destaque-texto-2">
+          <span>
+            Rendimentos da renda fixa{' '}
+            <span className={r.rendimentoRendaFixa < -0.005 ? 'text-destaque-negativo' : 'text-destaque-positivo'}>{formatarBRLComSinal(r.rendimentoRendaFixa)}</span>
+          </span>
+          <span>
+            Dividendos de ações e FIIs <span className="text-destaque-positivo">{formatarBRLComSinal(r.proventos)}</span>
+          </span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Cartao className="!p-3.5">
-          <div className="text-xs text-texto-2">Investido (livre)</div>
+          <div className="text-xs text-texto-2">Investido (longo prazo)</div>
           <div className="mt-1 font-mono text-[17px]">{formatarBRLInteiro(r.investido)}</div>
+          {Math.abs(r.valorizacao) >= 0.005 && (
+            <div className={`mt-0.5 text-[11px] ${corSinal(r.valorizacao)}`}>
+              {formatarBRLComSinal(r.valorizacao)} ({formatarPercentual(r.investido > 0 ? r.valorizacao / r.investido : 0)}) valorização
+            </div>
+          )}
         </Cartao>
         <Cartao className="!p-3.5">
           <div className="text-xs text-texto-2">Proventos no mês</div>
@@ -94,7 +105,10 @@ export default function Inicio() {
           <div><span className="font-bold text-positivo">Livre</span> {formatarBRLInteiro(r.patrimonio)}</div>
           <div><span className="font-bold text-reservado-texto">Reservado</span> {formatarBRLInteiro(r.reservado)}</div>
         </div>
-        {r.reservado > 0 && <div className="text-xs text-texto-2">O reservado para objetivos é investimento, mas não entra no patrimônio livre.</div>}
+        <div className="text-xs text-texto-2">
+          Livre é só o excedente (rendimentos e dividendos). O que você investiu fica guardado a longo prazo
+          {r.reservado > 0 ? ', e o reservado para objetivos não entra no patrimônio livre' : ''}.
+        </div>
       </Cartao>
 
       <Cartao className="flex flex-col gap-3">
