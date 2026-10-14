@@ -316,3 +316,79 @@ export function ajustesParaSaldo(
   })
   return { calculado, ajustes: ajustes.filter((a) => a.valor !== 0) }
 }
+
+// ============ Rendimento do mês (renda fixa) ============
+
+/** Feriados nacionais de data fixa (MM-DD). Os móveis (Carnaval etc.) ficam de fora: é estimativa. */
+const FERIADOS_FIXOS = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25']
+
+function proximoDia(iso: string) {
+  const d = new Date(iso + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Dias úteis (seg–sex, sem feriados fixos) depois de `apos` até `ate`, inclusive. */
+export function diasUteisEntre(apos: string, ate: string): number {
+  let n = 0
+  for (let d = proximoDia(apos); d <= ate; d = proximoDia(d)) {
+    const semana = new Date(d + 'T12:00:00Z').getUTCDay()
+    if (semana !== 0 && semana !== 6 && !FERIADOS_FIXOS.includes(d.slice(5))) n++
+  }
+  return n
+}
+
+export function ultimoDiaDoMes(iso: string): string {
+  const [a, m] = iso.split('-').map(Number)
+  return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10)
+}
+
+export interface RendimentoMes {
+  /** Quanto já rendeu no mês, pelos CDIs publicados. */
+  realizado: number
+  /** Estimativa para os dias úteis que faltam (CDI mais recente). */
+  projetado: number
+  /** realizado + projetado. */
+  total: number
+  /** Rendimento de um mês típico (21 dias úteis) no saldo e CDI atuais. */
+  ritmoMensal: number
+}
+
+/**
+ * Rendimento no mês de `hoje` para uma aplicação atrelada ao CDI.
+ * Realizado = crescimento do saldo pelos CDIs do mês (aportes e ajustes não contam).
+ */
+export function rendimentoNoMes(
+  ativo: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'>,
+  movs: Movimentacao[],
+  cdi: CdiDia[],
+  hoje: string,
+  /** CDI mais recente publicado (a série `cdi` pode começar depois dele). */
+  cdiAtual: CdiDia | null = cdi.length ? cdi[cdi.length - 1] : null,
+): RendimentoMes {
+  const zero = { realizado: 0, projetado: 0, total: 0, ritmoMensal: 0 }
+  if (ehRendaVariavel(ativo.tipo) || ativo.indexador !== 'cdi' || !(Number(ativo.taxa) > 0) || !movs.length) return zero
+  const inicioMes = hoje.slice(0, 8) + '01'
+  const agora = calcularPosicao(ativo, movs, null, cdi)
+  const semMes = calcularPosicao(ativo, movs, null, cdi.filter((d) => d.data < inicioMes))
+  const realizado = agora.valorAtual - semMes.valorAtual
+
+  const ultimo = cdiAtual
+  if (!ultimo || agora.valorAtual <= 0) return { ...zero, realizado, total: realizado }
+  const fatorDia = 1 + (Number(ultimo.taxa_dia) / 100) * (Number(ativo.taxa) / 100)
+  const fimMes = ultimoDiaDoMes(hoje)
+  const venceAntes = ativo.vencimento && ativo.vencimento <= fimMes
+  // Projeta a partir do dia seguinte ao último CDI publicado, sem contar dias
+  // antes do início do mês nem antes da primeira aplicação.
+  const primeira = movs.reduce((min, m) => (m.data < min ? m.data : min), movs[0].data)
+  const inicio = [ultimo.data, proximoDiaAnterior(inicioMes), proximoDiaAnterior(primeira)].sort().at(-1)!
+  const dias = diasUteisEntre(inicio, venceAntes ? ativo.vencimento! : fimMes)
+  const projetado = agora.valorAtual * (fatorDia ** dias - 1)
+  return { realizado, projetado, total: realizado + projetado, ritmoMensal: agora.valorAtual * (fatorDia ** 21 - 1) }
+}
+
+function proximoDiaAnterior(iso: string) {
+  const d = new Date(iso + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}

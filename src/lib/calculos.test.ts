@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ajustesParaSaldo, calcularPosicao, LIVRE, progressoObjetivos, resumir } from './calculos'
+import { ajustesParaSaldo, calcularPosicao, diasUteisEntre, LIVRE, progressoObjetivos, rendimentoNoMes, resumir } from './calculos'
 import type { Ativo, CdiDia, Movimentacao, Objetivo, TipoMovimentacao } from './tipos'
 
 let n = 0
@@ -193,5 +193,50 @@ describe('ajuste de saldo (renda fixa)', () => {
     const movs = [mov('aporte', 1000, null, { data: '2026-10-13' })]
     const { ajustes } = ajustesParaSaldo(CDB115, movs, cdi, '2026-10-13', 1000)
     expect(ajustes).toEqual([])
+  })
+})
+
+describe('rendimento no mês', () => {
+  const CDB: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> = { tipo: 'cdb', indexador: 'cdi', taxa: 100, vencimento: null }
+
+  it('conta dias úteis sem fins de semana e feriados fixos', () => {
+    // 13/10/2026 (ter) → 31/10/2026 (sáb): 13 dias úteis
+    expect(diasUteisEntre('2026-10-13', '2026-10-31')).toBe(13)
+    // 09/10 (sex) → 13/10: 12/10 é feriado, sobra só 13/10
+    expect(diasUteisEntre('2026-10-09', '2026-10-13')).toBe(1)
+  })
+
+  it('separa o realizado no mês da projeção até o fim do mês', () => {
+    const cdi: CdiDia[] = [
+      { data: '2026-09-30', taxa_dia: 1 },
+      { data: '2026-10-01', taxa_dia: 1 },
+      { data: '2026-10-02', taxa_dia: 1 },
+    ]
+    const movs = [mov('aporte', 1000, null, { data: '2026-09-30' })]
+    const r = rendimentoNoMes(CDB, movs, cdi, '2026-10-05')
+    // Setembro: 1000 → 1010. Outubro até agora: 1010 → 1030,301
+    expect(r.realizado).toBeCloseTo(1030.301 - 1010)
+    // Dias úteis de 03/10 (sáb) a 31/10: 19 (12/10 é feriado)
+    expect(r.projetado).toBeCloseTo(1030.301 * (1.01 ** 19 - 1))
+    expect(r.total).toBeCloseTo(r.realizado + r.projetado)
+    expect(r.ritmoMensal).toBeCloseTo(1030.301 * (1.01 ** 21 - 1))
+  })
+
+  it('aporte no mês não conta como rendimento', () => {
+    const cdi: CdiDia[] = [{ data: '2026-10-01', taxa_dia: 1 }]
+    const movs = [mov('aporte', 1000, null, { data: '2026-10-01' }), mov('ajuste', 50, null, { data: '2026-10-01' })]
+    const r = rendimentoNoMes(CDB, movs, cdi, '2026-10-01')
+    expect(r.realizado).toBeCloseTo(10.5)
+  })
+})
+
+describe('rendimento no mês com aplicação recente', () => {
+  it('projeta pelo CDI mais recente mesmo sem CDI depois da aplicação', () => {
+    const CDB: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> = { tipo: 'cdb', indexador: 'cdi', taxa: 100, vencimento: null }
+    const movs = [mov('aporte', 1000, null, { data: '2026-10-13' })]
+    const r = rendimentoNoMes(CDB, movs, [], '2026-10-13', { data: '2026-10-09', taxa_dia: 1 })
+    expect(r.realizado).toBe(0)
+    // Dias úteis de 10/10 a 31/10: 14 (12/10 é feriado)
+    expect(r.projetado).toBeCloseTo(1000 * (1.01 ** 14 - 1))
   })
 })
