@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCarteira, criarMovimentacao, salvarCotacaoManual, type NovaMovimentacao } from '../lib/dados'
 import { disponivel, LIVRE } from '../lib/calculos'
-import { formatarBRL, formatarBRLComSinal, formatarNumero, hojeSP, lerNumero } from '../lib/formato'
+import { formatarBRL, formatarBRLComSinal, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { ehRendaVariavel, NOME_TIPO, OBS_PROVENTOS_ANTERIORES, rotuloAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, Erro, Titulo } from '../components/ui'
@@ -57,16 +57,22 @@ export default function Lancamento() {
   }, [aba, ativo, rv, qtd])
 
   const qtdN = lerNumero(qtd)
-  const precoN = lerNumero(preco)
-  const total = rv ? (qtdN > 0 && precoN > 0 ? arred2(qtdN * precoN) : 0) : lerNumero(valor) > 0 ? arred2(lerNumero(valor)) : 0
+  // Posição antiga de ação/FII: o usuário informa totais (investido e valor atual) e o app
+  // deriva preço médio e cotação por cota.
+  const posicaoAntiga = rv && aba === 'aporte' && antiga
+  const investidoTotalN = posicaoAntiga ? lerNumero(preco) : NaN
+  const precoN = posicaoAntiga ? (qtdN > 0 && investidoTotalN > 0 ? investidoTotalN / qtdN : NaN) : lerNumero(preco)
+  const total = posicaoAntiga
+    ? investidoTotalN > 0 ? arred2(investidoTotalN) : 0
+    : rv ? (qtdN > 0 && precoN > 0 ? arred2(qtdN * precoN) : 0) : lerNumero(valor) > 0 ? arred2(lerNumero(valor)) : 0
   const disp = ativo ? disponivel(ativo.posicao, rv, chaveDestino) : 0
   const comRendimentoAnterior = !rv && aba === 'aporte' && antiga
   const saldoN = lerNumero(saldoAtual)
   const rendimentoAnterior = comRendimentoAnterior && saldoN > 0 && total > 0 ? arred2(saldoN - total) : 0
-  const posicaoAntiga = rv && aba === 'aporte' && antiga
-  const cotacaoN = lerNumero(cotacaoAtual)
+  const valorAtualTotalN = lerNumero(cotacaoAtual)
+  const cotacaoN = posicaoAntiga && qtdN > 0 && valorAtualTotalN > 0 ? valorAtualTotalN / qtdN : NaN
   const dividendosN = lerNumero(dividendosAnteriores)
-  const valorAtualAntiga = posicaoAntiga && qtdN > 0 && cotacaoN > 0 ? arred2(qtdN * cotacaoN) : 0
+  const valorAtualAntiga = posicaoAntiga && valorAtualTotalN > 0 ? arred2(valorAtualTotalN) : 0
   const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${objetivos.find((o) => o.id === destino)?.nome ?? 'objetivo'}"`
 
   async function salvar(e: FormEvent) {
@@ -79,8 +85,8 @@ export default function Lancamento() {
 
     if (rv) {
       if (!(qtdN > 0)) return setErro('Informe a quantidade de cotas.')
-      if (!(precoN > 0)) return setErro(aba === 'dividendo' ? 'Informe o valor por cota.' : posicaoAntiga ? 'Informe o preço médio.' : 'Informe o preço por cota.')
-      if (posicaoAntiga && cotacaoAtual.trim() && !(cotacaoN > 0)) return setErro('Cotação atual inválida.')
+      if (!(precoN > 0)) return setErro(aba === 'dividendo' ? 'Informe o valor por cota.' : posicaoAntiga ? 'Informe o valor total investido.' : 'Informe o preço por cota.')
+      if (posicaoAntiga && cotacaoAtual.trim() && !(cotacaoN > 0)) return setErro('Valor atual total inválido.')
       if (posicaoAntiga && dividendosAnteriores.trim() && !(dividendosN >= 0)) return setErro('Valor de dividendos inválido.')
       if (aba === 'resgate' && qtdN > disp + 1e-9) {
         return setErro(`Você tem ${formatarNumero(disp)} cotas ${nomeDestino}; não dá para resgatar ${formatarNumero(qtdN)}.`)
@@ -113,13 +119,14 @@ export default function Lancamento() {
       }
       // Ação/FII antigo: aporte pelo preço médio + dividendos já recebidos (fora do patrimônio).
       if (posicaoAntiga) {
-        lista[0] = { ...principal, observacao: 'Posição anterior ao cadastro (preço médio)' }
+        // Preço médio com 6 casas (limite da coluna) para o custo bater com o total investido.
+        lista[0] = { ...principal, preco_unitario: Math.round(precoN * 1e6) / 1e6, observacao: 'Posição anterior ao cadastro' }
         if (dividendosN > 0) {
           lista.push({ ...principal, tipo: 'dividendo', quantidade: null, preco_unitario: null, valor_total: arred2(dividendosN), observacao: OBS_PROVENTOS_ANTERIORES, objetivo_id: null })
         }
       }
       await criarMovimentacao(lista)
-      if (posicaoAntiga && cotacaoN > 0 && ativo.ticker) await salvarCotacaoManual(ativo.ticker, data, cotacaoN)
+      if (posicaoAntiga && cotacaoN > 0 && ativo.ticker) await salvarCotacaoManual(ativo.ticker, data, Math.round(cotacaoN * 1e6) / 1e6)
       navegar(`/ativo/${ativo.id}`)
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -213,7 +220,7 @@ export default function Lancamento() {
                   <input type="checkbox" className="mt-0.5 h-5 w-5 accent-[var(--positivo)]" checked={antiga} onChange={(e) => setAntiga(e.target.checked)} />
                   <span>
                     <b>Posição antiga (já tinha antes)</b>
-                    <span className="block text-xs text-texto-2">Para registrar cotas que você já tinha, com o preço médio da corretora e o que já rendeu.</span>
+                    <span className="block text-xs text-texto-2">Para registrar cotas que você já tinha, com o total investido e quanto vale hoje.</span>
                   </span>
                 </label>
               )}
@@ -221,13 +228,13 @@ export default function Lancamento() {
                 <Campo id="qtd" rotulo={rotuloQtd}>
                   <input id="qtd" className="campo font-mono" inputMode="decimal" placeholder="0" value={qtd} onChange={(e) => setQtd(e.target.value)} />
                 </Campo>
-                <Campo id="preco" rotulo={posicaoAntiga ? 'Preço médio' : rotuloPreco}>
+                <Campo id="preco" rotulo={posicaoAntiga ? 'Total investido' : rotuloPreco}>
                   <input id="preco" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={preco} onChange={(e) => setPreco(e.target.value)} />
                 </Campo>
               </div>
               {posicaoAntiga && (
                 <div className="grid grid-cols-2 gap-3">
-                  <Campo id="cot-atual" rotulo="Cotação atual (opcional)">
+                  <Campo id="cot-atual" rotulo="Valor atual total (opcional)">
                     <input id="cot-atual" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={cotacaoAtual} onChange={(e) => setCotacaoAtual(e.target.value)} />
                   </Campo>
                   <Campo id="div-ant" rotulo="Dividendos já recebidos (opcional)">
@@ -235,12 +242,15 @@ export default function Lancamento() {
                   </Campo>
                 </div>
               )}
-              {posicaoAntiga && total > 0 && (valorAtualAntiga > 0 || dividendosN > 0) && (
+              {posicaoAntiga && total > 0 && qtdN > 0 && (
                 <div className="flex flex-col gap-0.5 text-xs text-texto-2">
+                  <span>Preço médio: {formatarBRL(precoN)} por cota</span>
                   {valorAtualAntiga > 0 && (
                     <span>
-                      Valor atual {formatarBRL(valorAtualAntiga)} · variação{' '}
-                      <span className={valorAtualAntiga - total >= 0 ? 'text-positivo' : 'text-negativo'}>{formatarBRLComSinal(valorAtualAntiga - total)}</span>
+                      Cotação: {formatarBRL(cotacaoN)} por cota · valorização{' '}
+                      <span className={valorAtualAntiga - total >= 0 ? 'text-positivo' : 'text-negativo'}>
+                        {formatarBRLComSinal(valorAtualAntiga - total)} ({formatarPercentual((valorAtualAntiga - total) / total)})
+                      </span>
                     </span>
                   )}
                   {dividendosN > 0 && <span>Dividendos já recebidos: <span className="text-positivo">{formatarBRL(dividendosN)}</span> (entram no retorno, não no patrimônio)</span>}
@@ -276,8 +286,8 @@ export default function Lancamento() {
           )}
 
           <div className="flex items-baseline justify-between border-t border-linha pt-3">
-            <div className="text-[13px] text-texto-2">{comRendimentoAnterior ? 'Saldo registrado' : posicaoAntiga ? 'Custo (qtd × preço médio)' : 'Total'}</div>
-            <div className="font-mono text-xl">{formatarBRL(comRendimentoAnterior && saldoN > 0 ? saldoN : total)}</div>
+            <div className="text-[13px] text-texto-2">{comRendimentoAnterior ? 'Saldo registrado' : posicaoAntiga && valorAtualAntiga > 0 ? 'Valor atual' : 'Total'}</div>
+            <div className="font-mono text-xl">{formatarBRL(comRendimentoAnterior && saldoN > 0 ? saldoN : posicaoAntiga && valorAtualAntiga > 0 ? valorAtualAntiga : total)}</div>
           </div>
         </Cartao>
 
