@@ -1,8 +1,20 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { carregarAtivo, excluirMovimentacao, salvarCotacaoManual, type AtivoComPosicao } from '../lib/dados'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  alterarDestino,
+  alterarFinalidade,
+  carregarCarteira,
+  excluirAtivo,
+  excluirMovimentacao,
+  salvarCotacaoManual,
+  simularPosicao,
+  type AtivoComPosicao,
+  type Carteira,
+} from '../lib/dados'
+import { LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
-import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao } from '../lib/tipos'
+import { corObjetivo } from '../lib/objetivos'
+import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
 
@@ -17,22 +29,36 @@ const NOME_MOV: Record<Movimentacao['tipo'], string> = {
 
 export default function Ativo() {
   const { id = '' } = useParams()
-  const { dados: a, erro, carregando, recarregar } = useCarregar(() => carregarAtivo(id), [id])
+  const navegar = useNavigate()
+  const { dados, erro, carregando, recarregar } = useCarregar(carregarCarteira, [id])
+  const [erroAcao, setErroAcao] = useState<string | null>(null)
+  const a = dados?.ativos.find((x) => x.id === id)
+  const ehReserva = a?.finalidade === 'reserva_emergencia'
 
   const voltar = (
-    <Link to="/carteira" className="-mb-1 flex min-h-8 items-center gap-1 text-sm text-positivo">
+    <Link to={ehReserva ? '/reserva' : '/carteira'} className="-mb-1 flex min-h-8 items-center gap-1 text-sm text-positivo">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-      Carteira
+      {ehReserva ? 'Reserva' : 'Carteira'}
     </Link>
   )
 
-  if (carregando && !a) return <>{voltar}<Carregando /></>
-  if (erro) return <>{voltar}<Erro mensagem={erro} tentar={recarregar} /></>
+  if (carregando && !dados) return <>{voltar}<Carregando /></>
+  if (erro || !dados) return <>{voltar}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
   if (!a) return <>{voltar}<Erro mensagem="Ativo não encontrado." /></>
 
   const rv = ehRendaVariavel(a.tipo)
   const p = a.posicao
   const proventos = a.movimentacoes.filter((m) => m.tipo === 'dividendo' || m.tipo === 'jcp').reverse()
+  const temReservado = Object.keys(p.porDestino).some((d) => d !== LIVRE)
+
+  async function acao(fn: () => Promise<void>) {
+    setErroAcao(null)
+    try {
+      await fn()
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   return (
     <>
@@ -45,6 +71,7 @@ export default function Ativo() {
               ? [NOME_TIPO[a.tipo], a.ticker !== a.nome ? a.nome : null, a.instituicao].filter(Boolean).join(' · ')
               : [`CDB ${a.taxa ? formatarNumero(a.taxa) + '% CDI' : ''}`, a.vencimento && `vence ${formatarData(a.vencimento)}`, a.instituicao].filter(Boolean).join(' · ')}
           </div>
+          {ehReserva && <div className="mt-1 inline-block rounded bg-linha px-1.5 text-[11px] text-texto-2">Reserva de emergência · fora do patrimônio</div>}
         </div>
         <Link to={`/lancar?ativo=${a.id}`} className="shrink-0 rounded-full bg-botao px-3.5 py-2 text-[13px] font-bold text-white">
           + Lançar
@@ -68,12 +95,24 @@ export default function Ativo() {
       ) : (
         <Cartao className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3.5">
-            <Dado rotulo="Aplicado (líquido)">{formatarBRL(p.investido)}</Dado>
+            <Dado rotulo="Aplicado">{formatarBRL(p.investido)}</Dado>
             <Dado rotulo="Saldo bruto">{formatarBRL(p.valorAtual)}</Dado>
+            {!p.semRendimento && (
+              <Dado rotulo="Rendimento bruto" cor={corSinal(p.variacao)}>
+                {formatarBRLComSinal(p.variacao)}
+                <span className="ml-1 text-xs">({formatarPercentual(p.variacaoPercentual)})</span>
+              </Dado>
+            )}
           </div>
-          <div className="text-xs text-texto-2">O rendimento diário pelo CDI será calculado na Fase 3. Por enquanto o saldo é o valor aplicado.</div>
+          <div className="text-xs text-texto-2">
+            {p.semRendimento
+              ? 'Cálculo automático só para CDB atrelado ao CDI. Por enquanto o saldo é o valor aplicado.'
+              : `Estimativa pelo CDI diário do Banco Central${dados.cdiAte ? `, atualizado até ${formatarData(dados.cdiAte)}` : ''}. Sem IR; o extrato do banco é a referência final.`}
+          </div>
         </Cartao>
       )}
+
+      {!ehReserva && p.valorAtual > 0.005 && <UsoDoAtivo a={a} objetivos={dados.objetivos} />}
 
       {rv && a.ticker && <FormCotacao ticker={a.ticker} atual={a} aoSalvar={recarregar} />}
 
@@ -96,7 +135,41 @@ export default function Ativo() {
         </Cartao>
       )}
 
-      <Historico movs={a.movimentacoes} rv={rv} aoExcluir={recarregar} />
+      <Historico a={a} carteira={dados} aoMudar={recarregar} />
+
+      <div className="flex flex-wrap gap-x-5 gap-y-2 px-1 text-[13px] font-bold">
+        <button
+          type="button"
+          className="text-texto-2"
+          onClick={() => {
+            if (!ehReserva && temReservado) {
+              setErroAcao('Este ativo tem dinheiro reservado para objetivos. Troque o destino desses lançamentos para "Livre" antes de movê-lo para a reserva.')
+              return
+            }
+            acao(async () => {
+              await alterarFinalidade(a.id, ehReserva ? 'investimento' : 'reserva_emergencia')
+              recarregar()
+            })
+          }}
+        >
+          {ehReserva ? 'Mover para a Carteira' : 'Mover para a Reserva de emergência'}
+        </button>
+        <button
+          type="button"
+          className="text-negativo"
+          onClick={() => {
+            const n = a.movimentacoes.length
+            if (!confirm(`Excluir ${rotuloAtivo(a)}${n ? ` e seus ${n} lançamento(s)` : ''}? Não dá para desfazer.`)) return
+            acao(async () => {
+              await excluirAtivo(a.id)
+              navegar(ehReserva ? '/reserva' : '/carteira', { replace: true })
+            })
+          }}
+        >
+          Excluir ativo
+        </button>
+      </div>
+      {erroAcao && <div role="alert" className="px-1 text-sm text-negativo">{erroAcao}</div>}
     </>
   )
 }
@@ -107,6 +180,38 @@ function Dado({ rotulo, children, cor = '' }: { rotulo: string; children: ReactN
       <div className="text-xs text-texto-2">{rotulo}</div>
       <div className={`font-mono text-base ${cor}`}>{children}</div>
     </div>
+  )
+}
+
+function UsoDoAtivo({ a, objetivos }: { a: AtivoComPosicao; objetivos: Objetivo[] }) {
+  const p = a.posicao
+  const total = p.valorAtual
+  const partes = Object.entries(p.porDestino)
+    .map(([d, parcela]) => {
+      const o = objetivos.find((x) => x.id === d)
+      return { chave: d, nome: d === LIVRE ? 'Livre' : (o?.nome ?? 'Objetivo'), cor: d === LIVRE ? 'var(--positivo)' : o ? corObjetivo(o) : 'var(--reservado)', valor: parcela.valorAtual }
+    })
+    .sort((x, y) => (x.chave === LIVRE ? 1 : y.chave === LIVRE ? -1 : y.valor - x.valor))
+
+  return (
+    <Cartao className="flex flex-col gap-2.5">
+      <div className="text-sm font-bold">Uso deste ativo</div>
+      <div className="flex h-2.5 overflow-hidden rounded-[5px] bg-linha">
+        {partes.map((x) => (
+          <div key={x.chave} style={{ width: `${Math.max(0, (x.valor / total) * 100)}%`, background: x.cor }} />
+        ))}
+      </div>
+      {partes.map((x) => (
+        <div key={x.chave} className="flex justify-between text-[13px]">
+          <span className="font-bold" style={{ color: x.chave === LIVRE ? 'var(--positivo)' : x.cor }}>{x.nome}</span>
+          <span className="font-mono">{formatarBRL(x.valor)}</span>
+        </div>
+      ))}
+      <Link to={`/lancar?ativo=${a.id}`} className="mt-1 rounded-xl border border-campo p-3 text-center text-sm font-bold">
+        Reservar para objetivo
+      </Link>
+      <div className="text-xs text-texto-2">Para reservar o que já tem, troque o destino de um aporte na lista de lançamentos abaixo.</div>
+    </Cartao>
   )
 }
 
@@ -162,43 +267,93 @@ function FormCotacao({ ticker, atual, aoSalvar }: { ticker: string; atual: Ativo
   )
 }
 
-function Historico({ movs, rv, aoExcluir }: { movs: Movimentacao[]; rv: boolean; aoExcluir: () => void }) {
+function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
   const [erro, setErro] = useState<string | null>(null)
-  const lista = [...movs].reverse()
+  const rv = ehRendaVariavel(a.tipo)
+  const lista = [...a.movimentacoes].reverse()
+  const podeTrocarDestino = a.finalidade === 'investimento'
+  const objetivos = carteira.objetivos
 
   async function excluir(m: Movimentacao) {
     if (!confirm(`Excluir ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)} (${formatarBRL(m.valor_total)})?`)) return
+    const simulada = simularPosicao(a, a.movimentacoes.filter((x) => x.id !== m.id), carteira.cdi)
+    if (simulada.inconsistente) {
+      setErro('Excluir este aporte deixaria um resgate sem saldo. Exclua o resgate antes.')
+      return
+    }
     setErro(null)
     try {
       await excluirMovimentacao(m.id)
-      aoExcluir()
+      aoMudar()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function trocarDestino(m: Movimentacao, novo: string) {
+    const objetivoId = novo || null
+    const simulada = simularPosicao(
+      a,
+      a.movimentacoes.map((x) => (x.id === m.id ? { ...x, objetivo_id: objetivoId } : x)),
+      carteira.cdi,
+    )
+    if (simulada.inconsistente) {
+      setErro('Não dá para trocar: algum resgate ficaria maior do que o saldo do destino. Ajuste o resgate também.')
+      return
+    }
+    setErro(null)
+    try {
+      await alterarDestino(m.id, objetivoId)
+      aoMudar()
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
     }
   }
 
   return (
-    <Cartao className="flex flex-col gap-2.5">
+    <Cartao className="flex flex-col gap-3">
       <div className="text-sm font-bold">Lançamentos</div>
       {lista.length === 0 && <div className="text-[13px] text-texto-2">Nenhum lançamento ainda.</div>}
-      {lista.map((m) => (
-        <div key={m.id} className="flex items-center justify-between gap-2 text-[13px]">
-          <div className="min-w-0">
-            <span className="font-bold">{NOME_MOV[m.tipo]}</span>
-            <span className="text-texto-2">
-              {' · '}
-              {formatarData(m.data)}
-              {rv && m.quantidade ? ` · ${formatarNumero(m.quantidade)} × ${formatarBRL(m.preco_unitario ?? 0)}` : ''}
-            </span>
+      {lista.map((m) => {
+        const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate')
+        const opcoes = objetivos.filter((o) => !o.concluido || o.id === m.objetivo_id)
+        return (
+          <div key={m.id} className="flex flex-col gap-1.5 border-b border-linha pb-2.5 last:border-0 last:pb-0">
+            <div className="flex items-center justify-between gap-2 text-[13px]">
+              <div className="min-w-0">
+                <span className="font-bold">{NOME_MOV[m.tipo]}</span>
+                <span className="text-texto-2">
+                  {' · '}
+                  {formatarData(m.data)}
+                  {rv && m.quantidade ? ` · ${formatarNumero(m.quantidade)} × ${formatarBRL(m.preco_unitario ?? 0)}` : ''}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={`font-mono ${m.tipo === 'resgate' ? 'text-negativo' : ''}`}>{formatarBRL(m.valor_total)}</span>
+                <button type="button" onClick={() => excluir(m)} aria-label="Excluir lançamento" title="Excluir lançamento" className="rounded p-1 text-texto-2 hover:text-negativo">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                </button>
+              </div>
+            </div>
+            {comDestino && (opcoes.length > 0 || m.objetivo_id) && (
+              <label className="flex items-center gap-2 text-xs text-texto-2">
+                Destino
+                <select
+                  className="min-w-0 flex-1 rounded-lg border border-campo bg-cartao px-2 py-1.5 text-xs text-texto"
+                  value={m.objetivo_id ?? ''}
+                  onChange={(e) => trocarDestino(m, e.target.value)}
+                  aria-label={`Destino do ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)}`}
+                >
+                  <option value="">Livre (patrimônio)</option>
+                  {opcoes.map((o) => (
+                    <option key={o.id} value={o.id}>{o.nome}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className={`font-mono ${m.tipo === 'resgate' ? 'text-negativo' : ''}`}>{formatarBRL(m.valor_total)}</span>
-            <button type="button" onClick={() => excluir(m)} aria-label="Excluir lançamento" title="Excluir lançamento" className="rounded p-1 text-texto-2 hover:text-negativo">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-            </button>
-          </div>
-        </div>
-      ))}
+        )
+      })}
       {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
     </Cartao>
   )

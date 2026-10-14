@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { carregarCarteira, type AtivoComPosicao } from '../lib/dados'
 import { classeDoTipo, ehRendaVariavel, NOME_CLASSE, NOME_TIPO, rotuloAtivo, type Classe } from '../lib/tipos'
+import { LIVRE } from '../lib/calculos'
 import { formatarBRLInteiro, formatarCompacto, formatarNumero, formatarPercentual } from '../lib/formato'
 import { useCarregar } from '../lib/useCarregar'
 import { Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
@@ -31,9 +32,10 @@ export default function Carteira() {
   )
 
   if (carregando && !dados) return <>{cabecalho}<Carregando /></>
-  if (erro) return <>{cabecalho}<Erro mensagem={erro} tentar={recarregar} /></>
+  if (erro || !dados) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
 
-  const ativos = dados ?? []
+  // A reserva de emergência tem aba própria.
+  const ativos = dados.ativos.filter((a) => a.finalidade === 'investimento')
   if (!ativos.length) {
     return (
       <>
@@ -107,6 +109,9 @@ export default function Carteira() {
 function LinhaAtivo({ a, ultima }: { a: AtivoComPosicao; ultima: boolean }) {
   const p = a.posicao
   const rv = ehRendaVariavel(a.tipo)
+  const reservado = Object.entries(p.porDestino)
+    .filter(([d]) => d !== LIVRE)
+    .reduce((s, [, x]) => s + x.valorAtual, 0)
   const sub = rv
     ? `${NOME_TIPO[a.tipo]} · ${formatarNumero(p.quantidade)} ${p.quantidade === 1 ? 'cota' : 'cotas'}`
     : `Renda fixa${a.taxa ? ` · ${formatarNumero(a.taxa)}% ${a.indexador.toUpperCase()}` : ''}`
@@ -115,15 +120,16 @@ function LinhaAtivo({ a, ultima }: { a: AtivoComPosicao; ultima: boolean }) {
       <div className="min-w-0">
         <div className="truncate text-sm font-bold">{rotuloAtivo(a)}</div>
         <div className="text-xs text-texto-2">{sub}</div>
+        {reservado > 0.005 && <div className="text-xs text-reservado-texto">{formatarBRLInteiro(reservado)} reservado</div>}
       </div>
       <div className="shrink-0 text-right">
         <div className="font-mono text-sm">{formatarBRLInteiro(p.valorAtual)}</div>
         {rv && p.semCotacao ? (
           <div className="text-xs text-reservado-texto">sem cotação</div>
-        ) : rv ? (
-          <div className={`text-xs ${corSinal(p.variacao)}`}>{formatarPercentual(p.variacaoPercentual)}</div>
-        ) : (
+        ) : p.semRendimento ? (
           <div className="text-xs text-texto-2">aplicado</div>
+        ) : (
+          <div className={`text-xs ${corSinal(p.variacao)}`}>{formatarPercentual(p.variacaoPercentual)}</div>
         )}
       </div>
     </Link>
