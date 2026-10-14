@@ -168,6 +168,13 @@ export async function excluirMovimentacao(id: string): Promise<void> {
   erro(error)
 }
 
+export type EdicaoMovimentacao = Partial<Pick<Movimentacao, 'data' | 'quantidade' | 'preco_unitario' | 'valor_total' | 'observacao' | 'objetivo_id'>>
+
+export async function atualizarMovimentacao(id: string, campos: EdicaoMovimentacao): Promise<void> {
+  const { error } = await supabase.from('movimentacoes').update(campos).eq('id', id)
+  erro(error)
+}
+
 /** Troca o destino de um lançamento (null = livre). */
 export async function alterarDestino(id: string, objetivoId: string | null): Promise<void> {
   const { error } = await supabase.from('movimentacoes').update({ objetivo_id: objetivoId }).eq('id', id)

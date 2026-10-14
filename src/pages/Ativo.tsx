@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   alterarDestino,
   alterarFinalidade,
+  atualizarMovimentacao,
   carregarCarteira,
   criarMovimentacao,
   excluirAtivo,
@@ -11,6 +12,7 @@ import {
   simularPosicao,
   type AtivoComPosicao,
   type Carteira,
+  type EdicaoMovimentacao,
 } from '../lib/dados'
 import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
@@ -354,6 +356,8 @@ function FormCorrigirSaldo({ a, carteira, aoSalvar }: { a: AtivoComPosicao; cart
 
 function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
   const [erro, setErro] = useState<string | null>(null)
+  const [aberto, setAberto] = useState<string | null>(null)
+  const [editando, setEditando] = useState<string | null>(null)
   const rv = ehRendaVariavel(a.tipo)
   const lista = [...a.movimentacoes].reverse()
   const podeTrocarDestino = a.finalidade === 'investimento'
@@ -369,6 +373,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
     setErro(null)
     try {
       await excluirMovimentacao(m.id)
+      setAberto(null)
       aoMudar()
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -397,15 +402,44 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
 
   return (
     <Cartao className="flex flex-col gap-3">
-      <div className="text-sm font-bold">Lançamentos</div>
+      <div className="flex items-baseline justify-between">
+        <div className="text-sm font-bold">Lançamentos</div>
+        {lista.length > 0 && <div className="text-xs text-texto-2">Toque para editar</div>}
+      </div>
       {lista.length === 0 && <div className="text-[13px] text-texto-2">Nenhum lançamento ainda.</div>}
       {lista.map((m) => {
         const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate' || (!rv && m.tipo === 'ajuste'))
         const nome = !rv && m.tipo === 'ajuste' ? 'Ajuste de saldo' : NOME_MOV[m.tipo]
         const opcoes = objetivos.filter((o) => !o.concluido || o.id === m.objetivo_id)
+        const estaAberto = aberto === m.id
+
+        if (editando === m.id) {
+          return (
+            <div key={m.id} className="border-b border-linha pb-2.5 last:border-0 last:pb-0">
+              <EditarLancamento
+                a={a}
+                m={m}
+                nome={nome}
+                carteira={carteira}
+                aoCancelar={() => setEditando(null)}
+                aoSalvar={() => {
+                  setEditando(null)
+                  setAberto(null)
+                  aoMudar()
+                }}
+              />
+            </div>
+          )
+        }
+
         return (
           <div key={m.id} className="flex flex-col gap-1.5 border-b border-linha pb-2.5 last:border-0 last:pb-0">
-            <div className="flex items-center justify-between gap-2 text-[13px]">
+            <button
+              type="button"
+              onClick={() => setAberto(estaAberto ? null : m.id)}
+              aria-expanded={estaAberto}
+              className="flex items-center justify-between gap-2 text-left text-[13px]"
+            >
               <div className="min-w-0">
                 <span className="font-bold">{nome}</span>
                 <span className="text-texto-2">
@@ -414,15 +448,10 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                   {rv && m.quantidade ? ` · ${formatarNumero(m.quantidade)} × ${formatarBRL(m.preco_unitario ?? 0)}` : ''}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className={`font-mono ${m.tipo === 'resgate' || m.valor_total < 0 ? 'text-negativo' : ''}`}>
-                  {m.tipo === 'ajuste' ? formatarBRLComSinal(m.valor_total) : formatarBRL(m.valor_total)}
-                </span>
-                <button type="button" onClick={() => excluir(m)} aria-label="Excluir lançamento" title="Excluir lançamento" className="rounded p-1 text-texto-2 hover:text-negativo">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                </button>
-              </div>
-            </div>
+              <span className={`shrink-0 font-mono ${m.tipo === 'resgate' || m.valor_total < 0 ? 'text-negativo' : ''}`}>
+                {m.tipo === 'ajuste' ? formatarBRLComSinal(m.valor_total) : formatarBRL(m.valor_total)}
+              </span>
+            </button>
             {m.observacao && <div className="text-xs text-texto-2">{m.observacao}</div>}
             {comDestino && (opcoes.length > 0 || m.objetivo_id) && (
               <label className="flex items-center gap-2 text-xs text-texto-2">
@@ -440,10 +469,151 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                 </select>
               </label>
             )}
+            {estaAberto && (
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErro(null)
+                    setEditando(m.id)
+                  }}
+                  className="flex-1 rounded-lg border border-campo py-2 text-[13px] font-bold"
+                >
+                  Editar
+                </button>
+                <button type="button" onClick={() => excluir(m)} className="flex-1 rounded-lg border border-campo py-2 text-[13px] font-bold text-negativo">
+                  Excluir
+                </button>
+              </div>
+            )}
           </div>
         )
       })}
       {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
     </Cartao>
+  )
+}
+
+function EditarLancamento({
+  a,
+  m,
+  nome,
+  carteira,
+  aoSalvar,
+  aoCancelar,
+}: {
+  a: AtivoComPosicao
+  m: Movimentacao
+  nome: string
+  carteira: Carteira
+  aoSalvar: () => void
+  aoCancelar: () => void
+}) {
+  const rv = ehRendaVariavel(a.tipo)
+  // Renda variável com cotas: quantidade × preço. Demais: só valor.
+  const porCota = rv && (m.tipo === 'aporte' || m.tipo === 'resgate' || m.tipo === 'dividendo')
+  const ajusteCotas = rv && m.tipo === 'ajuste'
+  const permiteNegativo = m.tipo === 'ajuste'
+  const br = (v: number | null) => (v == null ? '' : String(v).replace('.', ','))
+
+  const [data, setData] = useState(m.data)
+  const [qtd, setQtd] = useState(br(m.quantidade))
+  const [preco, setPreco] = useState(br(m.preco_unitario))
+  const [valor, setValor] = useState(br(m.valor_total))
+  const [obs, setObs] = useState(m.observacao ?? '')
+  const [erro, setErro] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  const qtdN = lerNumero(qtd)
+  const precoN = lerNumero(preco)
+  const total = porCota
+    ? qtdN > 0 && precoN > 0
+      ? Math.round(qtdN * precoN * 100) / 100
+      : 0
+    : Math.round(lerNumero(valor) * 100) / 100
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    setErro(null)
+    if (!data) return setErro('Informe a data.')
+    if (data > hojeSP()) return setErro('A data não pode ser no futuro.')
+    let campos: EdicaoMovimentacao
+    if (porCota) {
+      if (!(qtdN > 0)) return setErro('Informe a quantidade de cotas.')
+      if (!(precoN > 0)) return setErro(m.tipo === 'dividendo' ? 'Informe o valor por cota.' : 'Informe o preço por cota.')
+      campos = { data, quantidade: qtdN, preco_unitario: precoN, valor_total: total }
+    } else if (ajusteCotas) {
+      if (!Number.isFinite(qtdN) || qtdN === 0) return setErro('Informe a quantidade (use negativo para reduzir).')
+      campos = { data, quantidade: qtdN }
+    } else {
+      if (!Number.isFinite(total) || total === 0 || (!permiteNegativo && total < 0)) {
+        return setErro(permiteNegativo ? 'Informe o valor (use negativo para reduzir o saldo).' : 'Informe o valor.')
+      }
+      campos = { data, valor_total: total }
+    }
+    campos.observacao = obs.trim() || null
+
+    const simulada = simularPosicao(
+      a,
+      a.movimentacoes.map((x) => (x.id === m.id ? { ...x, ...campos } : x)),
+      carteira.cdi,
+    )
+    if (simulada.inconsistente) {
+      return setErro('Com esses valores algum resgate ficaria maior do que o saldo disponível. Confira as quantidades e datas.')
+    }
+
+    setSalvando(true)
+    try {
+      await atualizarMovimentacao(m.id, campos)
+      aoSalvar()
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : String(err))
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <form onSubmit={salvar} className="flex flex-col gap-3 rounded-xl bg-fundo p-3">
+      <div className="text-[13px] font-bold">Editar {nome.toLowerCase()}</div>
+      <Campo id={`ed-data-${m.id}`} rotulo="Data">
+        <input id={`ed-data-${m.id}`} type="date" className="campo" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
+      </Campo>
+      {porCota ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Campo id={`ed-qtd-${m.id}`} rotulo={m.tipo === 'dividendo' ? 'Cotas na data-com' : 'Quantidade (cotas)'}>
+            <input id={`ed-qtd-${m.id}`} className="campo font-mono" inputMode="decimal" value={qtd} onChange={(e) => setQtd(e.target.value)} />
+          </Campo>
+          <Campo id={`ed-preco-${m.id}`} rotulo={m.tipo === 'dividendo' ? 'Valor por cota' : 'Preço por cota'}>
+            <input id={`ed-preco-${m.id}`} className="campo font-mono" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} />
+          </Campo>
+        </div>
+      ) : ajusteCotas ? (
+        <Campo id={`ed-qtd-${m.id}`} rotulo="Quantidade (negativo para reduzir)">
+          <input id={`ed-qtd-${m.id}`} className="campo font-mono" inputMode="decimal" value={qtd} onChange={(e) => setQtd(e.target.value)} />
+        </Campo>
+      ) : (
+        <Campo id={`ed-valor-${m.id}`} rotulo={permiteNegativo ? 'Valor (negativo para reduzir o saldo)' : 'Valor'}>
+          <input id={`ed-valor-${m.id}`} className="campo font-mono" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
+        </Campo>
+      )}
+      <Campo id={`ed-obs-${m.id}`} rotulo="Observação (opcional)">
+        <input id={`ed-obs-${m.id}`} className="campo" value={obs} onChange={(e) => setObs(e.target.value)} />
+      </Campo>
+      {porCota && (
+        <div className="flex items-baseline justify-between text-[13px]">
+          <span className="text-texto-2">Total</span>
+          <span className="font-mono text-base">{formatarBRL(total)}</span>
+        </div>
+      )}
+      {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={salvando} className="flex-1 rounded-xl bg-botao p-3 text-sm font-bold text-white disabled:opacity-60">
+          {salvando ? 'Salvando…' : 'Salvar alterações'}
+        </button>
+        <button type="button" onClick={aoCancelar} className="rounded-xl border border-campo px-4 text-sm">
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
