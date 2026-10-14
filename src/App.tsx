@@ -1,7 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './auth/AuthProvider'
 import Layout from './components/Layout'
-import { Carregando } from './components/ui'
+import { Carregando, Erro } from './components/ui'
+import { erroConfig } from './lib/supabase'
 import Login from './pages/Login'
 import Inicio from './pages/Inicio'
 import Carteira from './pages/Carteira'
@@ -13,6 +14,13 @@ import NovoAtivo from './pages/NovoAtivo'
 export default function App() {
   const { sessao, carregando } = useAuth()
 
+  if (erroConfig) {
+    return (
+      <div className="mx-auto max-w-md p-5">
+        <Erro mensagem={erroConfig} />
+      </div>
+    )
+  }
   if (carregando) return <Carregando />
   // Todas as telas exigem login.
   if (!sessao) return <Login />
