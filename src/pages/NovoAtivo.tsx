@@ -8,8 +8,9 @@ import { Campo, Cartao, Titulo } from '../components/ui'
 export default function NovoAtivo() {
   const navegar = useNavigate()
   const [params] = useSearchParams()
-  const voltarPara = params.get('voltar') // ex.: /lancar
-  const [tipo, setTipo] = useState<TipoAtivo>('fii')
+  const voltarPara = params.get('voltar') // ex.: /lancar, /reserva
+  const [reserva, setReserva] = useState(params.get('finalidade') === 'reserva_emergencia')
+  const [tipo, setTipo] = useState<TipoAtivo>(reserva ? 'cdb' : 'fii')
   const [ticker, setTicker] = useState('')
   const [nome, setNome] = useState('')
   const [instituicao, setInstituicao] = useState('')
@@ -47,8 +48,10 @@ export default function NovoAtivo() {
         indexador: rv ? 'nenhum' : 'cdi',
         taxa: rv ? null : taxaN,
         vencimento: !rv && vencimento ? vencimento : null,
+        finalidade: reserva ? 'reserva_emergencia' : 'investimento',
       })
-      navegar(voltarPara ? `${voltarPara}?ativo=${a.id}` : `/ativo/${a.id}`, { replace: true })
+      // Vindo do Lançar ou da Reserva, segue direto para lançar o primeiro aporte.
+      navegar(voltarPara ? `/lancar?ativo=${a.id}` : `/ativo/${a.id}`, { replace: true })
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
       setSalvando(false)
@@ -61,7 +64,7 @@ export default function NovoAtivo() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
         Voltar
       </Link>
-      <Titulo>Novo ativo</Titulo>
+      <Titulo>{reserva ? 'Nova aplicação da reserva' : 'Novo ativo'}</Titulo>
 
       <form onSubmit={salvar} className="flex flex-col gap-4">
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-segmento p-1" role="tablist" aria-label="Tipo de ativo">
@@ -107,6 +110,13 @@ export default function NovoAtivo() {
           <Campo id="inst" rotulo="Instituição / corretora (opcional)">
             <input id="inst" className="campo" value={instituicao} onChange={(e) => setInstituicao(e.target.value)} />
           </Campo>
+          <label className="flex items-start gap-3 border-t border-linha pt-3.5 text-sm">
+            <input type="checkbox" className="mt-0.5 h-5 w-5 accent-[var(--positivo)]" checked={reserva} onChange={(e) => setReserva(e.target.checked)} />
+            <span>
+              <b>É reserva de emergência</b>
+              <span className="block text-xs text-texto-2">Fica na aba Reserva, fora da Carteira e do patrimônio. Serve para acompanhar o rendimento.</span>
+            </span>
+          </label>
         </Cartao>
 
         {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}

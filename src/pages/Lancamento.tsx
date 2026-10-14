@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCarteira, criarMovimentacao } from '../lib/dados'
+import { disponivel, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarNumero, hojeSP, lerNumero } from '../lib/formato'
 import { ehRendaVariavel, NOME_TIPO, rotuloAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
@@ -22,6 +23,8 @@ export default function Lancamento() {
 
   const [aba, setAba] = useState<Aba>('aporte')
   const [ativoId, setAtivoId] = useState(params.get('ativo') ?? '')
+  /** '' = livre (patrimônio); senão, id do objetivo. */
+  const [destino, setDestino] = useState(params.get('objetivo') ?? '')
   const [data, setData] = useState(hojeSP())
   const [qtd, setQtd] = useState('')
   const [preco, setPreco] = useState('')
@@ -29,9 +32,13 @@ export default function Lancamento() {
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
-  const ativos = dados ?? []
+  const ativos = dados?.ativos ?? []
   const ativo = ativos.find((a) => a.id === ativoId)
   const rv = ativo ? ehRendaVariavel(ativo.tipo) : true
+  const ehReserva = ativo?.finalidade === 'reserva_emergencia'
+  const usaDestino = !!ativo && !ehReserva && aba !== 'dividendo'
+  const objetivos = (dados?.objetivos ?? []).filter((o) => !o.concluido || o.id === destino)
+  const chaveDestino = usaDestino && destino ? destino : LIVRE
 
   // Seleciona o primeiro ativo quando não veio nenhum na URL.
   useEffect(() => {
@@ -46,6 +53,8 @@ export default function Lancamento() {
   const qtdN = lerNumero(qtd)
   const precoN = lerNumero(preco)
   const total = rv ? (qtdN > 0 && precoN > 0 ? arred2(qtdN * precoN) : 0) : lerNumero(valor) > 0 ? arred2(lerNumero(valor)) : 0
+  const disp = ativo ? disponivel(ativo.posicao, rv, chaveDestino) : 0
+  const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${objetivos.find((o) => o.id === destino)?.nome ?? 'objetivo'}"`
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -58,13 +67,13 @@ export default function Lancamento() {
     if (rv) {
       if (!(qtdN > 0)) return setErro('Informe a quantidade de cotas.')
       if (!(precoN > 0)) return setErro(aba === 'dividendo' ? 'Informe o valor por cota.' : 'Informe o preço por cota.')
-      if (aba === 'resgate' && qtdN > ativo.posicao.quantidade + 1e-9) {
-        return setErro(`Você tem ${formatarNumero(ativo.posicao.quantidade)} cotas; não dá para resgatar ${formatarNumero(qtdN)}.`)
+      if (aba === 'resgate' && qtdN > disp + 1e-9) {
+        return setErro(`Você tem ${formatarNumero(disp)} cotas ${nomeDestino}; não dá para resgatar ${formatarNumero(qtdN)}.`)
       }
     } else {
       if (!(total > 0)) return setErro('Informe o valor.')
-      if (aba === 'resgate' && total > ativo.posicao.valorAtual + 0.005) {
-        return setErro(`O saldo aplicado é ${formatarBRL(ativo.posicao.valorAtual)}; o resgate não pode passar disso.`)
+      if (aba === 'resgate' && total > disp + 0.005) {
+        return setErro(`O saldo ${nomeDestino} é ${formatarBRL(disp)}; o resgate não pode passar disso.`)
       }
     }
 
@@ -78,6 +87,7 @@ export default function Lancamento() {
         preco_unitario: rv ? precoN : null,
         valor_total: total,
         observacao: null,
+        objetivo_id: usaDestino && destino ? destino : null,
       })
       navegar(`/ativo/${ativo.id}`)
     } catch (err) {
@@ -105,6 +115,13 @@ export default function Lancamento() {
 
   const rotuloQtd = aba === 'dividendo' ? 'Cotas na data-com' : 'Quantidade (cotas)'
   const rotuloPreco = aba === 'dividendo' ? 'Valor por cota' : 'Preço por cota'
+  const investimentos = ativos.filter((a) => a.finalidade === 'investimento')
+  const reservas = ativos.filter((a) => a.finalidade === 'reserva_emergencia')
+  const opcao = (a: (typeof ativos)[number]) => (
+    <option key={a.id} value={a.id}>
+      {rotuloAtivo(a)} — {ehRendaVariavel(a.tipo) ? NOME_TIPO[a.tipo] : 'Renda fixa'}
+    </option>
+  )
 
   return (
     <>
@@ -140,17 +157,16 @@ export default function Lancamento() {
               <Link to="/ativos/novo?voltar=/lancar" className="text-xs text-positivo">+ Novo ativo</Link>
             </div>
             <select id="ativo" className="campo" value={ativoId} onChange={(e) => { setAtivoId(e.target.value); setQtd(''); setErro(null) }}>
-              {ativos.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {rotuloAtivo(a)} — {ehRendaVariavel(a.tipo) ? NOME_TIPO[a.tipo] : 'Renda fixa'}
-                </option>
-              ))}
+              {reservas.length ? (
+                <>
+                  <optgroup label="Carteira">{investimentos.map(opcao)}</optgroup>
+                  <optgroup label="Reserva de emergência">{reservas.map(opcao)}</optgroup>
+                </>
+              ) : (
+                investimentos.map(opcao)
+              )}
             </select>
-            {ativo && aba === 'resgate' && (
-              <div className="text-xs text-texto-2">
-                Disponível: {rv ? `${formatarNumero(ativo.posicao.quantidade)} cotas` : formatarBRL(ativo.posicao.valorAtual)}
-              </div>
-            )}
+            {ehReserva && <div className="text-xs text-texto-2">Reserva de emergência: não entra no patrimônio.</div>}
           </div>
 
           <Campo id="data" rotulo="Data">
@@ -179,6 +195,30 @@ export default function Lancamento() {
             <div className="font-mono text-xl">{formatarBRL(total)}</div>
           </div>
         </Cartao>
+
+        {usaDestino && (
+          <Cartao className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between">
+              <label htmlFor="obj" className="rotulo">{aba === 'aporte' ? 'Reservar para objetivo (opcional)' : 'Resgatar de'}</label>
+              <Link to="/objetivos?novo=1&voltar=/lancar" className="text-xs text-positivo">+ Novo objetivo</Link>
+            </div>
+            <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setErro(null) }}>
+              <option value="">{aba === 'aporte' ? 'Nenhum — fica livre (patrimônio)' : 'Livre (patrimônio)'}</option>
+              {objetivos.map((o) => (
+                <option key={o.id} value={o.id}>{o.nome}</option>
+              ))}
+            </select>
+            {aba === 'aporte' && destino && (
+              <div className="text-xs text-texto-2">Fica reservado: conta como investimento, mas não como patrimônio livre. O rendimento vai para o objetivo.</div>
+            )}
+            {aba === 'resgate' && ativo && (
+              <div className="text-xs text-texto-2">Disponível: {rv ? `${formatarNumero(disp)} cotas` : formatarBRL(disp)}</div>
+            )}
+          </Cartao>
+        )}
+        {aba === 'resgate' && ativo && !usaDestino && (
+          <div className="-mt-2 px-1 text-xs text-texto-2">Disponível: {rv ? `${formatarNumero(disp)} cotas` : formatarBRL(disp)}</div>
+        )}
 
         {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
 
