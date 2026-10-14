@@ -47,7 +47,7 @@ export default function Inicio() {
       <div className="flex flex-col gap-1.5 rounded-2xl border border-destaque-borda bg-destaque p-5 text-white">
         <div className="text-[13px] text-destaque-texto-2">Patrimônio total</div>
         <div className="font-mono text-[30px] font-medium">{formatarBRL(r.patrimonio)}</div>
-        <div className="text-[13px] text-destaque-positivo">
+        <div className={`text-[13px] ${r.variacao < -0.005 ? 'text-destaque-negativo' : 'text-destaque-positivo'}`}>
           {formatarBRLComSinal(r.variacao)} ({formatarPercentual(r.variacaoPercentual)}) desde o início
         </div>
       </div>

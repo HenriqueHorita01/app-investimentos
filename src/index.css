@@ -27,6 +27,7 @@
   --color-destaque-borda: var(--destaque-borda);
   --color-destaque-texto-2: var(--destaque-texto-2);
   --color-destaque-positivo: var(--destaque-positivo);
+  --color-destaque-negativo: var(--destaque-negativo);
 }
 
 :root {
@@ -51,6 +52,7 @@
   --destaque-borda: #12161c;
   --destaque-texto-2: #c9ced6;
   --destaque-positivo: #7fe0be;
+  --destaque-negativo: #fca5a5;
   color-scheme: light;
 }
 
@@ -76,6 +78,7 @@
   --destaque-borda: #24433a;
   --destaque-texto-2: #a8c7ba;
   --destaque-positivo: #7fe0be;
+  --destaque-negativo: #f87171;
   color-scheme: dark;
 }
 

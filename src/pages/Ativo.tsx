@@ -145,9 +145,9 @@ function FormCotacao({ ticker, atual, aoSalvar }: { ticker: string; atual: Ativo
             </div>
           )}
         </div>
-        <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+        <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] items-end gap-2">
           <Campo id="cot-data" rotulo="Data">
-            <input id="cot-data" type="date" className="campo !px-2" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
+            <input id="cot-data" type="date" className="campo !px-2 !text-sm" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
           </Campo>
           <Campo id="cot-preco" rotulo="Fechamento">
             <input id="cot-preco" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={preco} onChange={(e) => setPreco(e.target.value)} />
