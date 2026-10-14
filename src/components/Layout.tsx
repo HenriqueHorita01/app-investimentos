@@ -28,6 +28,11 @@ const ITENS = [
     ),
   },
   {
+    para: '/reserva',
+    rotulo: 'Reserva',
+    icone: <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" />,
+  },
+  {
     para: '/lancar',
     rotulo: 'Lançar',
     icone: (
@@ -46,7 +51,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-borda bg-cartao pb-[max(env(safe-area-inset-bottom),12px)]">
-        <div className="mx-auto grid max-w-md grid-cols-4 pt-2">
+        <div className="mx-auto grid max-w-md grid-cols-5 pt-2">
           {ITENS.map((i) => (
             <NavLink
               key={i.para}
