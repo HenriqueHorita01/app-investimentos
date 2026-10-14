@@ -20,7 +20,7 @@ create index on movimentacoes (objetivo_id);
 
 -- ============ CDI diário automático ============
 -- A Edge Function `atualizar-cdi` busca a série 12 do BCB e grava em cdi_diario.
-create extension if not exists pg_net;
+create extension if not exists pg_net with schema extensions;
 create extension if not exists pg_cron;
 
 -- 09:30 e 21:30 (horário de Brasília), todos os dias. O BCB publica o CDI do dia
