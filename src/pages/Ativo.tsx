@@ -347,14 +347,20 @@ function UsoDoAtivo({ a, objetivos }: { a: AtivoComPosicao; objetivos: Objetivo[
 function FormCotacao({ ticker, atual, aoSalvar }: { ticker: string; atual: AtivoComPosicao; aoSalvar: () => void }) {
   const [data, setData] = useState(hojeSP())
   const [preco, setPreco] = useState('')
+  /** true = o usuário digita o valor total da posição; a cotação é total ÷ cotas. */
+  const [porTotal, setPorTotal] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const cotas = atual.posicao.quantidade
+  const digitado = lerNumero(preco)
+  const cotacaoCalculada = porTotal && cotas > 0 && digitado > 0 ? digitado / cotas : NaN
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
     setErro(null)
-    const v = lerNumero(preco)
-    if (!(v > 0)) return setErro('Informe o preço de fechamento.')
+    if (porTotal && !(cotas > 0)) return setErro('Sem cotas na carteira para dividir o valor total.')
+    const v = porTotal ? Math.round(cotacaoCalculada * 1e6) / 1e6 : digitado
+    if (!(v > 0)) return setErro(porTotal ? 'Informe o valor total da posição.' : 'Informe o preço de fechamento.')
     if (data > hojeSP()) return setErro('A data não pode ser no futuro.')
     setSalvando(true)
     try {
@@ -383,13 +389,20 @@ function FormCotacao({ ticker, atual, aoSalvar }: { ticker: string; atual: Ativo
           <Campo id="cot-data" rotulo="Data">
             <input id="cot-data" type="date" className="campo !px-2 !text-sm" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
           </Campo>
-          <Campo id="cot-preco" rotulo="Fechamento">
+          <Campo id="cot-preco" rotulo={porTotal ? 'Valor total' : 'Por cota'}>
             <input id="cot-preco" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={preco} onChange={(e) => setPreco(e.target.value)} />
           </Campo>
           <button type="submit" disabled={salvando} className="h-[50px] rounded-[10px] bg-botao px-4 text-sm font-bold text-white disabled:opacity-60">
             {salvando ? '…' : 'Salvar'}
           </button>
         </div>
+        {cotas > 0 && (
+          <label className="flex items-center gap-2 text-xs text-texto-2">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--positivo)]" checked={porTotal} onChange={(e) => setPorTotal(e.target.checked)} />
+            Informar o valor total das {formatarNumero(cotas)} cotas
+          </label>
+        )}
+        {porTotal && cotacaoCalculada > 0 && <div className="text-xs text-texto-2">Cotação: {formatarBRL(cotacaoCalculada)} por cota</div>}
         {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
       </form>
     </Cartao>
