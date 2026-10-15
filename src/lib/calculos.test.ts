@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ajustesParaSaldo, calcularPosicao, diasUteisEntre, LIVRE, progressoObjetivos, rendimentoNoMes, resumir } from './calculos'
+import { ajusteAplicacaoAntiga, ajustesParaSaldo, calcularPosicao, diasUteisEntre, LIVRE, progressoObjetivos, rendimentoNoMes, resumir } from './calculos'
 import type { Ativo, CdiDia, Movimentacao, Objetivo, TipoMovimentacao } from './tipos'
 
 let n = 0
@@ -270,5 +270,28 @@ describe('rendimento no mês com aplicação recente', () => {
     expect(r.realizado).toBe(0)
     // Dias úteis de 10/10 a 31/10: 14 (12/10 é feriado)
     expect(r.projetado).toBeCloseTo(1000 * (1.01 ** 14 - 1))
+  })
+})
+
+describe('aplicação antiga com a data original', () => {
+  const CDB: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> = { tipo: 'cdb', indexador: 'cdi', taxa: 100, vencimento: null }
+  const cdi: CdiDia[] = [
+    { data: '2026-03-31', taxa_dia: 1 },
+    { data: '2026-04-01', taxa_dia: 1 },
+    { data: '2026-10-15', taxa_dia: 1 },
+  ]
+
+  it('o saldo de hoje fica igual ao informado (sem contar o CDI duas vezes)', () => {
+    const aj = ajusteAplicacaoAntiga(CDB, '2026-03-31', 1999, 2144.92, cdi, '2026-10-15')
+    expect(aj.data).toBe('2026-10-15')
+    // Calculado até ontem: 1999 × 1,01 × 1,01 = 2039,1799
+    expect(aj.valor).toBeCloseTo(2144.92 - 1999 * 1.01 * 1.01, 2)
+    const movs = [
+      mov('aporte', 1999, null, { data: '2026-03-31' }),
+      mov('ajuste', aj.valor, null, { data: aj.data }),
+    ]
+    const ateOntem = calcularPosicao(CDB, movs, null, cdi.filter((d) => d.data < '2026-10-15'))
+    expect(ateOntem.valorAtual).toBeCloseTo(2144.92, 2)
+    expect(ateOntem.investido).toBe(1999)
   })
 })

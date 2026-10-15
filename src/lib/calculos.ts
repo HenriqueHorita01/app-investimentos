@@ -405,3 +405,34 @@ function proximoDiaAnterior(iso: string) {
   d.setUTCDate(d.getUTCDate() - 1)
   return d.toISOString().slice(0, 10)
 }
+
+/**
+ * Aplicação antiga de renda fixa: o usuário informa a data em que aplicou, o valor
+ * aplicado e o saldo bruto de HOJE. O aporte fica na data da aplicação (idade do lote) e
+ * a diferença entre o saldo de hoje e o que o app calcula pelo CDI vira um ajuste com
+ * data de hoje — assim o CDI do passado não é contado duas vezes.
+ */
+export function ajusteAplicacaoAntiga(
+  ativo: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'>,
+  dataAplicacao: string,
+  valorAplicado: number,
+  saldoHoje: number,
+  cdi: CdiDia[],
+  hoje: string,
+): { data: string; valor: number } {
+  const aporte: Movimentacao = {
+    id: 'novo',
+    ativo_id: 'novo',
+    data: dataAplicacao,
+    tipo: 'aporte',
+    quantidade: null,
+    preco_unitario: null,
+    valor_total: valorAplicado,
+    observacao: null,
+    objetivo_id: null,
+    criado_em: '',
+  }
+  // CDI de hoje ainda não entra: ele rende por cima do saldo informado.
+  const calculado = calcularPosicao(ativo, [aporte], null, cdi.filter((d) => d.data < hoje)).valorAtual
+  return { data: hoje, valor: Math.round((saldoHoje - calculado) * 100) / 100 }
+}
