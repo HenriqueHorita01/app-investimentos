@@ -16,6 +16,29 @@ export interface Ativo {
   ativo: boolean
   finalidade: Finalidade
   criado_em: string
+  // ---- Planejamento (aba Minha Carteira) ----
+  /** Categoria da Minha Carteira (null = fora da carteira). */
+  categoria_id: string | null
+  /** % da carteira total desejado (null = pendente de configuração). */
+  percentual_alvo: number | null
+  /** Preço para simular quando ainda não há cotação. */
+  preco_referencia: number | null
+  /** Renda fixa: aplicação mínima e incremento depois dela. */
+  aplicacao_minima: number | null
+  incremento_minimo: number | null
+  liquidez: string | null
+  /** Renda variável: quantidade mínima por compra (1 = fracionário). */
+  lote: number
+}
+
+export interface CategoriaCarteira {
+  id: string
+  nome: string
+  /** % da carteira total (as categorias somam 100). */
+  percentual: number
+  ordem: number
+  cor: string | null
+  criado_em: string
 }
 
 export interface Movimentacao {
@@ -58,8 +81,8 @@ export interface Cotacao {
   fonte: string
 }
 
-/** Tipos cadastráveis no MVP (Fase 1). */
-export const TIPOS_MVP: TipoAtivo[] = ['fii', 'acao', 'cdb']
+/** Tipos cadastráveis. */
+export const TIPOS_MVP: TipoAtivo[] = ['fii', 'acao', 'etf', 'cdb', 'lci_lca', 'tesouro']
 
 export const NOME_TIPO: Record<TipoAtivo, string> = {
   fii: 'FII',
@@ -99,3 +122,21 @@ export function rotuloAtivo(a: Pick<Ativo, 'ticker' | 'nome'>): string {
 
 /** Observação dos dividendos lançados de uma vez ao cadastrar uma posição antiga. */
 export const OBS_PROVENTOS_ANTERIORES = 'Proventos recebidos antes do cadastro'
+
+/** Indexadores de renda fixa e como a taxa é lida em cada um. */
+export const INDEXADORES: { id: Indexador; nome: string; rotuloTaxa: string; exemplo: string; taxaObrigatoria: boolean }[] = [
+  { id: 'cdi', nome: '% do CDI', rotuloTaxa: 'Taxa (% do CDI)', exemplo: '110', taxaObrigatoria: true },
+  { id: 'ipca', nome: 'IPCA +', rotuloTaxa: 'Taxa real (IPCA + % a.a.)', exemplo: '6,5', taxaObrigatoria: true },
+  { id: 'pre', nome: 'Prefixado', rotuloTaxa: 'Taxa (% a.a.)', exemplo: '12,5', taxaObrigatoria: true },
+  { id: 'selic', nome: 'Selic', rotuloTaxa: 'Taxa adicional (% a.a.)', exemplo: '0,1', taxaObrigatoria: false },
+]
+
+/** "102% CDI", "IPCA + 6,5%", "12,5% a.a.", "Selic + 0,1%" (vazio se não houver taxa). */
+export function descreverTaxa(a: Pick<Ativo, 'indexador' | 'taxa'>): string {
+  const t = a.taxa != null ? a.taxa.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : null
+  if (a.indexador === 'cdi') return t ? `${t}% CDI` : 'CDI'
+  if (a.indexador === 'ipca') return t ? `IPCA + ${t}%` : 'IPCA'
+  if (a.indexador === 'selic') return t ? `Selic + ${t}%` : 'Selic'
+  if (a.indexador === 'pre') return t ? `${t}% a.a.` : 'Prefixado'
+  return ''
+}

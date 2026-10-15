@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
-import type { Ativo, CdiDia, Cotacao, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
+import type { Ativo, CategoriaCarteira, CdiDia, Cotacao, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
 import { ehRendaVariavel, rotuloAtivo } from './tipos'
+import { CATEGORIAS_PADRAO } from './carteiraPlano'
 import { calcularPosicao, progressoObjetivos, type Posicao, type ProgressoObjetivo } from './calculos'
 
 export interface AtivoComPosicao extends Ativo {
@@ -81,7 +82,14 @@ export async function carregarCarteira(): Promise<Carteira> {
   erro(ativosR.error)
   erro(objetivosR.error)
   erro(cdiUltR.error)
-  const ativos = (ativosR.data ?? []) as Ativo[]
+  const ativos = ((ativosR.data ?? []) as Ativo[]).map((a) => ({
+    ...a,
+    taxa: num(a.taxa),
+    percentual_alvo: num(a.percentual_alvo),
+    preco_referencia: num(a.preco_referencia),
+    aplicacao_minima: num(a.aplicacao_minima),
+    incremento_minimo: num(a.incremento_minimo),
+  }))
   const todosObjetivos = ((objetivosR.data ?? []) as Objetivo[]).map((o) => ({ ...o, valor_alvo: num(o.valor_alvo) }))
   const objetivos = todosObjetivos.filter((o) => o.tipo !== 'reserva_emergencia')
   const reserva = todosObjetivos.find((o) => o.tipo === 'reserva_emergencia') ?? (await criarReserva())
@@ -146,6 +154,12 @@ export interface NovoAtivo {
   indexador: Ativo['indexador']
   taxa: number | null
   vencimento: string | null
+  categoria_id?: string | null
+  percentual_alvo?: number | null
+  preco_referencia?: number | null
+  aplicacao_minima?: number | null
+  incremento_minimo?: number | null
+  liquidez?: string | null
 }
 
 export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
@@ -154,7 +168,25 @@ export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
   return data as Ativo
 }
 
-export type EdicaoAtivo = Partial<Pick<Ativo, 'tipo' | 'ticker' | 'nome' | 'instituicao' | 'taxa' | 'vencimento'>>
+export type EdicaoAtivo = Partial<
+  Pick<
+    Ativo,
+    | 'tipo'
+    | 'ticker'
+    | 'nome'
+    | 'instituicao'
+    | 'indexador'
+    | 'taxa'
+    | 'vencimento'
+    | 'categoria_id'
+    | 'percentual_alvo'
+    | 'preco_referencia'
+    | 'aplicacao_minima'
+    | 'incremento_minimo'
+    | 'liquidez'
+    | 'lote'
+  >
+>
 
 export async function atualizarAtivo(id: string, campos: EdicaoAtivo): Promise<void> {
   const { error } = await supabase.from('ativos').update(campos).eq('id', id)
@@ -261,4 +293,43 @@ export async function moverEntreDestinos(ativoId: string, origem: string | null,
 export async function liberarDoObjetivo(ativoId: string, objetivoId: string): Promise<void> {
   const { error } = await supabase.from('movimentacoes').update({ objetivo_id: null }).eq('ativo_id', ativoId).eq('objetivo_id', objetivoId)
   erro(error)
+}
+
+// ============ Minha Carteira: categorias ============
+
+/** Categorias da Minha Carteira. Na primeira vez, cria a distribuição padrão (Alternativa B). */
+export async function carregarCategorias(): Promise<CategoriaCarteira[]> {
+  const { data, error } = await supabase.from('carteira_categorias').select('*').order('ordem').order('criado_em')
+  erro(error)
+  if (data && data.length) return data.map((c) => ({ ...c, percentual: Number(c.percentual) }))
+  const ins = await supabase
+    .from('carteira_categorias')
+    .insert(CATEGORIAS_PADRAO.map((c, i) => ({ ...c, ordem: i })))
+    .select()
+  erro(ins.error)
+  return (ins.data ?? []).map((c) => ({ ...c, percentual: Number(c.percentual) }))
+}
+
+export async function criarCategoria(dados: { nome: string; percentual: number; ordem: number; cor: string | null }): Promise<void> {
+  const { error } = await supabase.from('carteira_categorias').insert(dados)
+  erro(error)
+}
+
+export async function atualizarCategoria(id: string, dados: Partial<Pick<CategoriaCarteira, 'nome' | 'percentual' | 'ordem' | 'cor'>>): Promise<void> {
+  const { error } = await supabase.from('carteira_categorias').update(dados).eq('id', id)
+  erro(error)
+}
+
+/** Exclui a categoria. Os ativos dela continuam existindo, só saem da Minha Carteira. */
+export async function excluirCategoria(id: string): Promise<void> {
+  const { error } = await supabase.from('carteira_categorias').delete().eq('id', id)
+  erro(error)
+}
+
+/** Grava os % de vários ativos de uma vez (ex.: "dividir igualmente"). */
+export async function salvarPercentuais(itens: { id: string; percentual_alvo: number | null }[]): Promise<void> {
+  for (const i of itens) {
+    const { error } = await supabase.from('ativos').update({ percentual_alvo: i.percentual_alvo }).eq('id', i.id)
+    erro(error)
+  }
 }
