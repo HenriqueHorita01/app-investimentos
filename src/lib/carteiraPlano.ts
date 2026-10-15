@@ -3,6 +3,7 @@
 import { LIVRE, type Posicao } from './calculos'
 import type { Ativo, CategoriaCarteira, Cotacao, Movimentacao } from './tipos'
 import { ehRendaVariavel } from './tipos'
+import type { CategoriaSim, ItemSim } from './carteiraSimulador'
 
 /** Tolerância para considerar uma soma de percentuais "fechada" (0,01 p.p.). */
 export const TOLERANCIA_PCT = 0.01
@@ -27,8 +28,8 @@ export interface AtivoPlano {
   quantidadeLivre: number
   /** Cotação mais recente, senão preço de referência, senão null. */
   preco: number | null
-  /** De onde veio o preço. */
-  fontePreco: 'cotacao' | 'referencia' | null
+  /** De onde veio o preço (custo = custo médio, quando não há cotação nem referência). */
+  fontePreco: 'cotacao' | 'referencia' | 'custo' | null
   dataPreco: string | null
   /** Data do primeiro aporte (aquisição). */
   dataAquisicao: string | null
@@ -62,7 +63,9 @@ export function montarAtivoPlano(
   cotacao: Cotacao | null,
 ): AtivoPlano {
   const livre = posicao.porDestino[LIVRE]
-  const preco = cotacao?.fechamento ?? ativo.preco_referencia ?? null
+  const rv = ehRendaVariavel(ativo.tipo)
+  const custo = rv && posicao.custoMedio > 0 ? posicao.custoMedio : null
+  const preco = cotacao?.fechamento ?? ativo.preco_referencia ?? custo
   const aportes = movs.filter((m) => m.tipo === 'aporte').map((m) => m.data).sort()
   return {
     ativo,
@@ -70,7 +73,7 @@ export function montarAtivoPlano(
     investidoLivre: livre?.investido ?? 0,
     quantidadeLivre: ehRendaVariavel(ativo.tipo) ? (livre?.quantidade ?? 0) : 0,
     preco,
-    fontePreco: cotacao ? 'cotacao' : ativo.preco_referencia != null ? 'referencia' : null,
+    fontePreco: cotacao ? 'cotacao' : ativo.preco_referencia != null ? 'referencia' : custo != null ? 'custo' : null,
     dataPreco: cotacao?.data ?? null,
     dataAquisicao: aportes[0] ?? null,
     pendente: ativo.percentual_alvo == null,
@@ -111,4 +114,27 @@ export function dividirIgualmente(percentualCategoria: number, quantidade: numbe
   const partes = Array.from({ length: quantidade }, () => base)
   partes[quantidade - 1] = Math.round((percentualCategoria - base * (quantidade - 1)) * 1000) / 1000
   return partes
+}
+
+/** Converte o planejamento para o formato do simulador / prioridades. */
+export function paraSimulador(p: Planejamento): { categorias: CategoriaSim[]; itens: ItemSim[] } {
+  return {
+    categorias: p.categorias.map((c) => ({ id: c.categoria.id, nome: c.categoria.nome, percentual: c.categoria.percentual })),
+    itens: p.categorias.flatMap((c) =>
+      c.ativos.map(
+        (a): ItemSim => ({
+          id: a.ativo.id,
+          rotulo: a.ativo.ticker || a.ativo.nome,
+          categoriaId: c.categoria.id,
+          percentualAlvo: a.ativo.percentual_alvo,
+          valorAtual: a.valorLivre,
+          rendaVariavel: ehRendaVariavel(a.ativo.tipo),
+          preco: ehRendaVariavel(a.ativo.tipo) ? a.preco : null,
+          lote: a.ativo.lote || 1,
+          aplicacaoMinima: a.ativo.aplicacao_minima,
+          incrementoMinimo: a.ativo.incremento_minimo,
+        }),
+      ),
+    ),
+  }
 }
