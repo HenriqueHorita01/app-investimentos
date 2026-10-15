@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { carregarCarteira, carregarMetaReserva, salvarMetaReserva } from '../lib/dados'
+import { atualizarObjetivo, carregarCarteira } from '../lib/dados'
 import { rendimentoNoMes } from '../lib/calculos'
 import {
   formatarBRL,
@@ -16,20 +16,17 @@ import {
 import { ehRendaVariavel, NOME_TIPO, rotuloAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
-
-async function carregarReserva() {
-  const [carteira, meta] = await Promise.all([carregarCarteira(), carregarMetaReserva()])
-  return { carteira, meta }
-}
+import { ReservarParte } from '../components/ReservarParte'
 
 export default function Reserva() {
-  const { dados, erro, carregando, recarregar } = useCarregar(carregarReserva)
+  const { dados: carteira, erro, carregando, recarregar } = useCarregar(carregarCarteira)
+  const [usando, setUsando] = useState(false)
   const hoje = hojeSP()
 
   const cabecalho = (
     <Titulo
       direita={
-        <Link to="/ativos/novo?finalidade=reserva_emergencia&voltar=/reserva" className="rounded-full border border-campo bg-cartao px-3.5 py-2 text-[13px] font-bold">
+        <Link to="/ativos/novo?reserva=1&voltar=/reserva" className="rounded-full border border-campo bg-cartao px-3.5 py-2 text-[13px] font-bold">
           + Aplicação
         </Link>
       }
@@ -38,16 +35,27 @@ export default function Reserva() {
     </Titulo>
   )
 
-  if (carregando && !dados) return <>{cabecalho}<Carregando /></>
-  if (erro || !dados) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
+  if (carregando && !carteira) return <>{cabecalho}<Carregando /></>
+  if (erro || !carteira) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
 
-  const { carteira, meta } = dados
+  const reservaId = carteira.reserva.id
+  const meta = carteira.reserva.valor_alvo
   const cdiAtual = carteira.cdiAte && carteira.cdiUltimo != null ? { data: carteira.cdiAte, taxa_dia: carteira.cdiUltimo } : null
+  // Só a parte de cada investimento destinada à reserva.
   const ativos = carteira.ativos
-    .filter((a) => a.finalidade === 'reserva_emergencia')
-    .map((a) => ({ ...a, mes: rendimentoNoMes(a, a.movimentacoes, carteira.cdi, hoje, cdiAtual) }))
-  const saldo = ativos.reduce((s, a) => s + a.posicao.valorAtual, 0)
-  const aplicado = ativos.reduce((s, a) => s + a.posicao.investido, 0)
+    .filter((a) => (a.posicao.porDestino[reservaId]?.valorAtual ?? 0) > 0.005)
+    .map((a) => {
+      const parte = a.posicao.porDestino[reservaId]
+      const movsReserva = a.movimentacoes.filter((m) => m.objetivo_id === reservaId)
+      return {
+        ...a,
+        parte,
+        fracao: a.posicao.valorAtual > 0 ? parte.valorAtual / a.posicao.valorAtual : 1,
+        mes: rendimentoNoMes(a, movsReserva, carteira.cdi, hoje, cdiAtual),
+      }
+    })
+  const saldo = ativos.reduce((s, a) => s + a.parte.valorAtual, 0)
+  const aplicado = ativos.reduce((s, a) => s + a.parte.investido, 0)
   const rendimento = saldo - aplicado
   const mesRealizado = ativos.reduce((s, a) => s + a.mes.realizado, 0)
   const mesTotal = ativos.reduce((s, a) => s + a.mes.total, 0)
@@ -67,7 +75,7 @@ export default function Reserva() {
         </div>
       </div>
 
-      <MetaReserva meta={meta} saldo={saldo} aoMudar={recarregar} />
+      <MetaReserva reservaId={reservaId} meta={meta} saldo={saldo} aoMudar={recarregar} />
 
       <div className="grid grid-cols-2 gap-3">
         <Cartao className="!p-3.5">
@@ -90,38 +98,59 @@ export default function Reserva() {
       {ativos.length === 0 ? (
         <Cartao className="flex flex-col gap-3 text-sm">
           <div>
-            Registre aqui o dinheiro da sua reserva de emergência (ex.: CDB de liquidez diária). Ele fica <b>fora do patrimônio</b> e serve só para
-            acompanhar o rendimento.
+            Registre aqui o dinheiro da sua reserva de emergência. Pode ser uma aplicação inteira ou só <b>parte</b> de um investimento que você já
+            tem. Ele fica <b>fora do patrimônio</b> e serve para acompanhar o rendimento.
           </div>
-          <Link to="/ativos/novo?finalidade=reserva_emergencia&voltar=/reserva" className="self-start rounded-xl bg-botao px-4 py-3 text-sm font-bold text-white">
+          <Link to="/ativos/novo?reserva=1&voltar=/reserva" className="self-start rounded-xl bg-botao px-4 py-3 text-sm font-bold text-white">
             Adicionar aplicação
           </Link>
         </Cartao>
       ) : (
         <div className="flex flex-col overflow-hidden rounded-[14px] bg-cartao">
           {ativos.map((a, i) => {
-            const p = a.posicao
             const rv = ehRendaVariavel(a.tipo)
+            const rend = a.parte.valorAtual - a.parte.investido
             return (
               <Link key={a.id} to={`/ativo/${a.id}`} className={`flex justify-between gap-3 px-4 py-3.5 ${i < ativos.length - 1 ? 'border-b border-linha' : ''}`}>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-bold">{rotuloAtivo(a)}</div>
                   <div className="text-xs text-texto-2">
-                    {rv ? `${NOME_TIPO[a.tipo]} · ${formatarNumero(p.quantidade)} cotas` : `${a.taxa ? formatarNumero(a.taxa) + '% CDI' : NOME_TIPO[a.tipo]}`}
+                    {rv ? `${NOME_TIPO[a.tipo]} · ${formatarNumero(a.parte.quantidade)} cotas` : `${a.taxa ? formatarNumero(a.taxa) + '% CDI' : NOME_TIPO[a.tipo]}`}
                     {a.instituicao ? ` · ${a.instituicao}` : ''}
+                  </div>
+                  <div className="text-xs text-emergencia">
+                    {a.fracao >= 0.9995 ? 'Investimento inteiro na reserva' : `${formatarPercentual(a.fracao, false)} deste investimento`}
                   </div>
                   {a.mes.ritmoMensal > 0 && <div className="text-xs text-positivo">≈ {formatarBRL(a.mes.ritmoMensal)}/mês</div>}
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-mono text-sm">{formatarBRL(p.valorAtual)}</div>
-                  <div className={`text-xs ${p.semRendimento ? 'text-texto-2' : corSinal(p.variacao)}`}>
-                    {p.semRendimento ? 'sem cálculo' : formatarBRLComSinal(p.variacao)}
+                  <div className="font-mono text-sm">{formatarBRL(a.parte.valorAtual)}</div>
+                  <div className={`text-xs ${a.posicao.semRendimento ? 'text-texto-2' : corSinal(rend)}`}>
+                    {a.posicao.semRendimento ? 'sem cálculo' : formatarBRLComSinal(rend)}
                   </div>
                 </div>
               </Link>
             )
           })}
         </div>
+      )}
+
+      {usando ? (
+        <Cartao>
+          <ReservarParte
+            carteira={carteira}
+            objetivoFixo={reservaId}
+            aoCancelar={() => setUsando(false)}
+            aoSalvar={() => {
+              setUsando(false)
+              recarregar()
+            }}
+          />
+        </Cartao>
+      ) : (
+        <button type="button" onClick={() => setUsando(true)} className="rounded-[14px] border border-campo bg-cartao p-3 text-sm font-bold">
+          Usar parte de um investimento
+        </button>
       )}
 
       <div className="px-1 text-xs text-texto-2">
@@ -132,7 +161,7 @@ export default function Reserva() {
   )
 }
 
-function MetaReserva({ meta, saldo, aoMudar }: { meta: number | null; saldo: number; aoMudar: () => void }) {
+function MetaReserva({ reservaId, meta, saldo, aoMudar }: { reservaId: string; meta: number | null; saldo: number; aoMudar: () => void }) {
   const [editando, setEditando] = useState(false)
   const [valor, setValor] = useState(meta != null ? String(meta).replace('.', ',') : '')
   const [erro, setErro] = useState<string | null>(null)
@@ -145,7 +174,7 @@ function MetaReserva({ meta, saldo, aoMudar }: { meta: number | null; saldo: num
     if (v != null && !(v > 0)) return setErro('Informe um valor maior que zero.')
     setSalvando(true)
     try {
-      await salvarMetaReserva(v)
+      await atualizarObjetivo(reservaId, { valor_alvo: v })
       setEditando(false)
       aoMudar()
     } catch (err) {
@@ -194,11 +223,11 @@ function MetaReserva({ meta, saldo, aoMudar }: { meta: number | null; saldo: num
         <button type="button" onClick={() => setEditando(true)} className="text-[13px] font-bold text-positivo">Editar</button>
       </div>
       <div className="flex items-baseline justify-between">
-        <span className="font-mono text-[22px] text-positivo">{formatarPercentual(Math.floor(progresso * 1000) / 1000, false)}</span>
+        <span className="font-mono text-[22px] text-emergencia">{formatarPercentual(Math.floor(progresso * 1000) / 1000, false)}</span>
         <span className="text-[13px] text-texto-2">de {formatarBRLInteiro(meta)}</span>
       </div>
       <div className="h-2.5 overflow-hidden rounded-[5px] bg-linha" role="progressbar" aria-valuenow={Math.round(progresso * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso da meta da reserva">
-        <div className="h-full rounded-[5px] bg-positivo" style={{ width: `${Math.min(100, progresso * 100)}%` }} />
+        <div className="h-full rounded-[5px] bg-emergencia" style={{ width: `${Math.min(100, progresso * 100)}%` }} />
       </div>
       <div className="text-xs text-texto-2">{falta > 0.005 ? `Faltam ${formatarBRL(falta)}` : 'Meta atingida!'}</div>
     </Cartao>
