@@ -9,7 +9,7 @@ export default function NovoAtivo() {
   const navegar = useNavigate()
   const [params] = useSearchParams()
   const voltarPara = params.get('voltar') // ex.: /lancar, /reserva
-  const [reserva, setReserva] = useState(params.get('finalidade') === 'reserva_emergencia')
+  const [reserva, setReserva] = useState(params.get('reserva') === '1')
   const [tipo, setTipo] = useState<TipoAtivo>(reserva ? 'cdb' : 'fii')
   const [ticker, setTicker] = useState('')
   const [nome, setNome] = useState('')
@@ -48,10 +48,10 @@ export default function NovoAtivo() {
         indexador: rv ? 'nenhum' : 'cdi',
         taxa: rv ? null : taxaN,
         vencimento: !rv && vencimento ? vencimento : null,
-        finalidade: reserva ? 'reserva_emergencia' : 'investimento',
       })
       // Vindo do Lançar ou da Reserva, segue direto para lançar o primeiro aporte.
-      navegar(voltarPara ? `/lancar?ativo=${a.id}` : `/ativo/${a.id}`, { replace: true })
+      // Reserva: o primeiro aporte já vai com destino "Reserva de emergência".
+      navegar(reserva ? `/lancar?ativo=${a.id}&objetivo=reserva` : voltarPara ? `/lancar?ativo=${a.id}` : `/ativo/${a.id}`, { replace: true })
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
       setSalvando(false)
@@ -115,7 +115,7 @@ export default function NovoAtivo() {
             <input type="checkbox" className="mt-0.5 h-5 w-5 accent-[var(--positivo)]" checked={reserva} onChange={(e) => setReserva(e.target.checked)} />
             <span>
               <b>É reserva de emergência</b>
-              <span className="block text-xs text-texto-2">Fica na aba Reserva, fora da Carteira e do patrimônio. Serve para acompanhar o rendimento.</span>
+              <span className="block text-xs text-texto-2">O primeiro aporte já vai para a Reserva de emergência (fora do patrimônio). Depois dá para dividir com objetivos ou deixar parte livre.</span>
             </span>
           </label>
         </Cartao>

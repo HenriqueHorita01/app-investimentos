@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { atualizarObjetivo, carregarCarteira, criarObjetivo, excluirObjetivo, liberarDoObjetivo, type AtivoComPosicao } from '../lib/dados'
+import { atualizarObjetivo, carregarCarteira, criarObjetivo, excluirObjetivo, liberarDoObjetivo, type Carteira } from '../lib/dados'
 import type { ProgressoObjetivo } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarBRLInteiro, formatarData, hojeSP, lerNumero } from '../lib/formato'
 import { CORES_OBJETIVO, corObjetivo } from '../lib/objetivos'
@@ -35,7 +35,7 @@ export default function Objetivos() {
 
   const lista = [...dados.progresso].sort((a, b) => Number(a.objetivo.concluido) - Number(b.objetivo.concluido))
   const reservado = lista.reduce((s, p) => s + p.valorAtual, 0)
-  const alvo = lista.filter((p) => !p.objetivo.concluido).reduce((s, p) => s + p.objetivo.valor_alvo, 0)
+  const alvo = lista.filter((p) => !p.objetivo.concluido).reduce((s, p) => s + (p.objetivo.valor_alvo ?? 0), 0)
 
   return (
     <>
@@ -85,7 +85,7 @@ export default function Objetivos() {
       )}
 
       {lista.map((p) => (
-        <CartaoObjetivo key={p.objetivo.id} p={p} ativos={dados.ativos} todos={dados.progresso} aoMudar={recarregar} />
+        <CartaoObjetivo key={p.objetivo.id} p={p} carteira={dados} aoMudar={recarregar} />
       ))}
     </>
   )
@@ -93,13 +93,11 @@ export default function Objetivos() {
 
 function CartaoObjetivo({
   p,
-  ativos,
-  todos,
+  carteira,
   aoMudar,
 }: {
   p: ProgressoObjetivo
-  ativos: AtivoComPosicao[]
-  todos: ProgressoObjetivo[]
+  carteira: Carteira
   aoMudar: () => void
 }) {
   const [usando, setUsando] = useState(false)
@@ -108,7 +106,7 @@ function CartaoObjetivo({
   const [erro, setErro] = useState<string | null>(null)
   const cor = corObjetivo(o)
   const rendimento = p.valorAtual - p.investido
-  const falta = o.valor_alvo - p.valorAtual
+  const falta = (o.valor_alvo ?? 0) - p.valorAtual
 
   async function acao(fn: () => Promise<void>) {
     setErro(null)
@@ -147,7 +145,7 @@ function CartaoObjetivo({
         </div>
         <div className="shrink-0 text-right">
           <div className="font-mono text-[15px]">{formatarBRL(p.valorAtual)}</div>
-          <div className="text-xs text-texto-2">de {formatarBRLInteiro(o.valor_alvo)}</div>
+          <div className="text-xs text-texto-2">de {formatarBRLInteiro((o.valor_alvo ?? 0))}</div>
         </div>
       </div>
 
@@ -187,8 +185,7 @@ function CartaoObjetivo({
 
       {usando && (
         <ReservarParte
-          ativos={ativos}
-          objetivos={todos}
+          carteira={carteira}
           objetivoFixo={o.id}
           aoCancelar={() => setUsando(false)}
           aoSalvar={() => {

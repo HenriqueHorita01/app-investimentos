@@ -41,10 +41,16 @@ export default function Lancamento() {
   const ativos = dados?.ativos ?? []
   const ativo = ativos.find((a) => a.id === ativoId)
   const rv = ativo ? ehRendaVariavel(ativo.tipo) : true
-  const ehReserva = ativo?.finalidade === 'reserva_emergencia'
-  const usaDestino = !!ativo && !ehReserva && aba !== 'dividendo'
+  const reservaId = dados?.reserva.id ?? ''
+  const usaDestino = !!ativo && aba !== 'dividendo'
   const objetivos = (dados?.objetivos ?? []).filter((o) => !o.concluido || o.id === destino)
   const chaveDestino = usaDestino && destino ? destino : LIVRE
+  const nomeDoDestino = (id: string) => (id === reservaId ? 'Reserva de emergência' : (objetivos.find((o) => o.id === id)?.nome ?? 'objetivo'))
+
+  // ?objetivo=reserva (vindo do cadastro de aplicação da reserva) vira o id real da reserva.
+  useEffect(() => {
+    if (destino === 'reserva' && reservaId) setDestino(reservaId)
+  }, [destino, reservaId])
 
   // Seleciona o primeiro ativo quando não veio nenhum na URL.
   useEffect(() => {
@@ -73,7 +79,7 @@ export default function Lancamento() {
   const cotacaoN = posicaoAntiga && qtdN > 0 && valorAtualTotalN > 0 ? valorAtualTotalN / qtdN : NaN
   const dividendosN = lerNumero(dividendosAnteriores)
   const valorAtualAntiga = posicaoAntiga && valorAtualTotalN > 0 ? arred2(valorAtualTotalN) : 0
-  const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${objetivos.find((o) => o.id === destino)?.nome ?? 'objetivo'}"`
+  const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${nomeDoDestino(destino)}"`
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -153,8 +159,6 @@ export default function Lancamento() {
 
   const rotuloQtd = aba === 'dividendo' ? 'Cotas na data-com' : 'Quantidade (cotas)'
   const rotuloPreco = aba === 'dividendo' ? 'Valor por cota' : 'Preço por cota'
-  const investimentos = ativos.filter((a) => a.finalidade === 'investimento')
-  const reservas = ativos.filter((a) => a.finalidade === 'reserva_emergencia')
   const opcao = (a: (typeof ativos)[number]) => (
     <option key={a.id} value={a.id}>
       {rotuloAtivo(a)} — {ehRendaVariavel(a.tipo) ? NOME_TIPO[a.tipo] : 'Renda fixa'}
@@ -195,16 +199,8 @@ export default function Lancamento() {
               <Link to="/ativos/novo?voltar=/lancar" className="text-xs text-positivo">+ Novo ativo</Link>
             </div>
             <select id="ativo" className="campo" value={ativoId} onChange={(e) => { setAtivoId(e.target.value); setQtd(''); setErro(null) }}>
-              {reservas.length ? (
-                <>
-                  <optgroup label="Carteira">{investimentos.map(opcao)}</optgroup>
-                  <optgroup label="Reserva de emergência">{reservas.map(opcao)}</optgroup>
-                </>
-              ) : (
-                investimentos.map(opcao)
-              )}
+              {ativos.map(opcao)}
             </select>
-            {ehReserva && <div className="text-xs text-texto-2">Reserva de emergência: não entra no patrimônio.</div>}
           </div>
 
           <Campo id="data" rotulo={comRendimentoAnterior || posicaoAntiga ? 'Data de hoje (ou do extrato)' : 'Data'}>
@@ -294,17 +290,29 @@ export default function Lancamento() {
         {usaDestino && (
           <Cartao className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between">
-              <label htmlFor="obj" className="rotulo">{aba === 'aporte' ? 'Reservar para objetivo (opcional)' : 'Resgatar de'}</label>
+              <label htmlFor="obj" className="rotulo">{aba === 'aporte' ? 'Destino do dinheiro' : 'Resgatar de'}</label>
               <Link to="/objetivos?novo=1&voltar=/lancar" className="text-xs text-positivo">+ Novo objetivo</Link>
             </div>
             <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setErro(null) }}>
-              <option value="">{aba === 'aporte' ? 'Nenhum — fica livre' : 'Livre'}</option>
-              {objetivos.map((o) => (
-                <option key={o.id} value={o.id}>{o.nome}</option>
-              ))}
+              <option value="">Livre</option>
+              {reservaId && <option value={reservaId}>Reserva de emergência</option>}
+              {objetivos.length > 0 && (
+                <optgroup label="Objetivos">
+                  {objetivos.map((o) => (
+                    <option key={o.id} value={o.id}>{o.nome}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             {aba === 'aporte' && destino && (
-              <div className="text-xs text-texto-2">Fica reservado: conta como investimento, mas não como patrimônio livre. O rendimento vai para o objetivo.</div>
+              <div className="text-xs text-texto-2">
+                {destino === reservaId
+                  ? 'Vai para a Reserva de emergência: fora do patrimônio, só para acompanhar o rendimento.'
+                  : 'Fica reservado para o objetivo: conta como investimento, mas não como patrimônio livre. O rendimento vai para o objetivo.'}
+              </div>
+            )}
+            {aba === 'aporte' && (
+              <div className="text-xs text-texto-2">Depois dá para dividir o investimento entre vários destinos no detalhe do ativo.</div>
             )}
             {aba === 'resgate' && ativo && (
               <div className="text-xs text-texto-2">Disponível: {rv ? `${formatarNumero(disp)} cotas` : formatarBRL(disp)}</div>

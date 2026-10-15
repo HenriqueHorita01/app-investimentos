@@ -34,7 +34,7 @@ export default function Inicio() {
   if (erro || !dados) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
 
   const { ativos, progresso } = dados
-  const r = resumir(ativos)
+  const r = resumir(ativos, dados.reserva.id)
   const mes = hoje.slice(0, 7)
   const proventosMes = ativos
     .flatMap((a) => a.movimentacoes)

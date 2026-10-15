@@ -2,13 +2,13 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   alterarDestino,
-  alterarFinalidade,
   atualizarAtivo,
   atualizarMovimentacao,
   carregarCarteira,
   criarMovimentacao,
   excluirAtivo,
   excluirMovimentacao,
+  liberarDoObjetivo,
   salvarCotacaoManual,
   simularPosicao,
   type AtivoComPosicao,
@@ -18,8 +18,9 @@ import {
 } from '../lib/dados'
 import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
-import { corObjetivo } from '../lib/objetivos'
-import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type Objetivo, type TipoAtivo } from '../lib/tipos'
+import { partesDoAtivo } from '../lib/objetivos'
+import { BarraDestinos } from '../components/BarraDestinos'
+import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
 import { ReservarParte } from '../components/ReservarParte'
@@ -40,12 +41,10 @@ export default function Ativo() {
   const [erroAcao, setErroAcao] = useState<string | null>(null)
   const [editandoAtivo, setEditandoAtivo] = useState(false)
   const a = dados?.ativos.find((x) => x.id === id)
-  const ehReserva = a?.finalidade === 'reserva_emergencia'
-
   const voltar = (
-    <Link to={ehReserva ? '/reserva' : '/carteira'} className="-mb-1 flex min-h-8 items-center gap-1 text-sm text-positivo">
+    <Link to="/carteira" className="-mb-1 flex min-h-8 items-center gap-1 text-sm text-positivo">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-      {ehReserva ? 'Reserva' : 'Carteira'}
+      Carteira
     </Link>
   )
 
@@ -56,7 +55,6 @@ export default function Ativo() {
   const rv = ehRendaVariavel(a.tipo)
   const p = a.posicao
   const proventos = a.movimentacoes.filter((m) => m.tipo === 'dividendo' || m.tipo === 'jcp').reverse()
-  const temReservado = Object.keys(p.porDestino).some((d) => d !== LIVRE)
 
   async function acao(fn: () => Promise<void>) {
     setErroAcao(null)
@@ -78,7 +76,6 @@ export default function Ativo() {
               ? [NOME_TIPO[a.tipo], a.ticker !== a.nome ? a.nome : null, a.instituicao].filter(Boolean).join(' · ')
               : [`CDB ${a.taxa ? formatarNumero(a.taxa) + '% CDI' : ''}`, a.vencimento && `vence ${formatarData(a.vencimento)}`, a.instituicao].filter(Boolean).join(' · ')}
           </div>
-          {ehReserva && <div className="mt-1 inline-block rounded bg-linha px-1.5 text-[11px] text-texto-2">Reserva de emergência · fora do patrimônio</div>}
         </div>
         <div className="flex shrink-0 gap-2">
           {!editandoAtivo && (
@@ -139,7 +136,7 @@ export default function Ativo() {
 
       {!rv && a.movimentacoes.length > 0 && <FormCorrigirSaldo a={a} carteira={dados} aoSalvar={recarregar} />}
 
-      {!ehReserva && p.valorAtual > 0.005 && <UsoDoAtivo a={a} carteira={dados} aoMudar={recarregar} />}
+      {p.valorAtual > 0.005 && <UsoDoAtivo a={a} carteira={dados} aoMudar={recarregar} />}
 
       {rv && a.ticker && <FormCotacao ticker={a.ticker} atual={a} aoSalvar={recarregar} />}
 
@@ -167,29 +164,13 @@ export default function Ativo() {
       <div className="flex flex-wrap gap-x-5 gap-y-2 px-1 text-[13px] font-bold">
         <button
           type="button"
-          className="text-texto-2"
-          onClick={() => {
-            if (!ehReserva && temReservado) {
-              setErroAcao('Este ativo tem dinheiro reservado para objetivos. Troque o destino desses lançamentos para "Livre" antes de movê-lo para a reserva.')
-              return
-            }
-            acao(async () => {
-              await alterarFinalidade(a.id, ehReserva ? 'investimento' : 'reserva_emergencia')
-              recarregar()
-            })
-          }}
-        >
-          {ehReserva ? 'Mover para a Carteira' : 'Mover para a Reserva de emergência'}
-        </button>
-        <button
-          type="button"
           className="text-negativo"
           onClick={() => {
             const n = a.movimentacoes.length
             if (!confirm(`Excluir ${rotuloAtivo(a)}${n ? ` e seus ${n} lançamento(s)` : ''}? Não dá para desfazer.`)) return
             acao(async () => {
               await excluirAtivo(a.id)
-              navegar(ehReserva ? '/reserva' : '/carteira', { replace: true })
+              navegar('/carteira', { replace: true })
             })
           }}
         >
@@ -314,49 +295,67 @@ function Dado({ rotulo, children, cor = '' }: { rotulo: string; children: ReactN
 }
 
 function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
-  const [reservando, setReservando] = useState(false)
-  const objetivos: Objetivo[] = carteira.objetivos
+  const [separando, setSeparando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
   const p = a.posicao
-  const total = p.valorAtual
-  const partes = Object.entries(p.porDestino)
-    .map(([d, parcela]) => {
-      const o = objetivos.find((x) => x.id === d)
-      return { chave: d, nome: d === LIVRE ? 'Livre' : (o?.nome ?? 'Objetivo'), cor: d === LIVRE ? 'var(--positivo)' : o ? corObjetivo(o) : 'var(--reservado)', valor: parcela.valorAtual }
-    })
-    .sort((x, y) => (x.chave === LIVRE ? 1 : y.chave === LIVRE ? -1 : y.valor - x.valor))
+  const partes = partesDoAtivo(p, carteira.objetivos, carteira.reserva)
+  const livre = p.porDestino[LIVRE]?.valorAtual ?? 0
+
+  async function liberar(chave: string, nome: string, valor: number) {
+    if (!confirm(`Liberar ${formatarBRL(valor)} de "${nome}"? Volta a ser livre neste investimento.`)) return
+    setErro(null)
+    try {
+      await liberarDoObjetivo(a.id, chave)
+      aoMudar()
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   return (
-    <Cartao className="flex flex-col gap-2.5">
-      <div className="text-sm font-bold">Uso deste ativo</div>
-      <div className="flex h-2.5 overflow-hidden rounded-[5px] bg-linha">
+    <Cartao className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between">
+        <div className="text-sm font-bold">Para onde vai este investimento</div>
+        <div className="font-mono text-[13px] text-texto-2">{formatarBRL(p.valorAtual)}</div>
+      </div>
+      <BarraDestinos partes={partes} altura="h-3" />
+      <div className="flex flex-col gap-2">
         {partes.map((x) => (
-          <div key={x.chave} style={{ width: `${Math.max(0, (x.valor / total) * 100)}%`, background: x.cor }} />
+          <div key={x.chave} className="flex items-center justify-between gap-2 text-[13px]">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: x.cor }} />
+              <span className="truncate font-bold">{x.nome}</span>
+              <span className="shrink-0 text-xs text-texto-2">{formatarPercentual(x.fracao, false)}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-3">
+              <span className="font-mono">{formatarBRL(x.valor)}</span>
+              {x.tipo !== 'livre' && (
+                <button type="button" className="text-xs font-bold text-texto-2" onClick={() => liberar(x.chave, x.nome, x.valor)}>
+                  Liberar
+                </button>
+              )}
+            </span>
+          </div>
         ))}
       </div>
-      {partes.map((x) => (
-        <div key={x.chave} className="flex justify-between text-[13px]">
-          <span className="font-bold" style={{ color: x.chave === LIVRE ? 'var(--positivo)' : x.cor }}>{x.nome}</span>
-          <span className="font-mono">{formatarBRL(x.valor)}</span>
-        </div>
-      ))}
-      {reservando ? (
+      {separando ? (
         <ReservarParte
-          ativos={carteira.ativos}
-          objetivos={carteira.progresso}
+          carteira={carteira}
           ativoFixo={a.id}
-          aoCancelar={() => setReservando(false)}
+          aoCancelar={() => setSeparando(false)}
           aoSalvar={() => {
-            setReservando(false)
+            setSeparando(false)
             aoMudar()
           }}
         />
       ) : (
-        (p.porDestino[LIVRE]?.valorAtual ?? 0) >= 0.01 && (
-          <button type="button" onClick={() => setReservando(true)} className="mt-1 rounded-xl border border-campo p-3 text-center text-sm font-bold">
-            Reservar parte para um objetivo
+        livre >= 0.01 && (
+          <button type="button" onClick={() => setSeparando(true)} className="rounded-xl border border-campo p-3 text-center text-sm font-bold">
+            Separar parte para reserva ou objetivo
           </button>
         )
       )}
+      {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
     </Cartao>
   )
 }
@@ -513,8 +512,8 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
   const [editando, setEditando] = useState<string | null>(null)
   const rv = ehRendaVariavel(a.tipo)
   const lista = [...a.movimentacoes].reverse()
-  const podeTrocarDestino = a.finalidade === 'investimento'
-  const objetivos = carteira.objetivos
+  // Destinos possíveis de um lançamento: reserva de emergência e objetivos (além de livre).
+  const objetivos = [{ ...carteira.reserva, nome: 'Reserva de emergência' }, ...carteira.objetivos]
 
   async function excluir(m: Movimentacao) {
     if (!confirm(`Excluir ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)} (${formatarBRL(m.valor_total)})?`)) return
@@ -557,7 +556,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
       <div className="text-sm font-bold">Lançamentos</div>
       {lista.length === 0 && <div className="text-[13px] text-texto-2">Nenhum lançamento ainda.</div>}
       {lista.map((m) => {
-        const comDestino = podeTrocarDestino && (m.tipo === 'aporte' || m.tipo === 'resgate' || (!rv && m.tipo === 'ajuste'))
+        const comDestino = (m.tipo === 'aporte' || m.tipo === 'resgate' || (!rv && m.tipo === 'ajuste'))
         const nome = !rv && m.tipo === 'ajuste' ? 'Ajuste de saldo' : NOME_MOV[m.tipo]
         const opcoes = objetivos.filter((o) => !o.concluido || o.id === m.objetivo_id)
 
