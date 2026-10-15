@@ -63,7 +63,7 @@ async function ultimasCotacoes(tickers: string[]): Promise<Map<string, Cotacao>>
 }
 
 /** CDI diário a partir de uma data (só o necessário para os CDBs existentes). */
-async function cdiDesde(desde: string): Promise<CdiDia[]> {
+export async function cdiDesde(desde: string): Promise<CdiDia[]> {
   const linhas = await todas<CdiDia>((de, ate) =>
     supabase.from('cdi_diario').select('data, taxa_dia').gte('data', desde).order('data').range(de, ate),
   )

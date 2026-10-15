@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { carregarCarteira, criarMovimentacao, salvarCotacaoManual, type NovaMovimentacao } from '../lib/dados'
-import { disponivel, LIVRE } from '../lib/calculos'
+import { carregarCarteira, cdiDesde, criarMovimentacao, salvarCotacaoManual, type NovaMovimentacao } from '../lib/dados'
+import { ajusteAplicacaoAntiga, disponivel, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { ehRendaVariavel, NOME_TIPO, OBS_PROVENTOS_ANTERIORES, rotuloAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
@@ -119,9 +119,13 @@ export default function Lancamento() {
         objetivo_id,
       }
       const lista: NovaMovimentacao[] = [principal]
-      // Renda fixa antiga: aporte pelo valor aplicado + ajuste com o rendimento que já tinha.
-      if (rendimentoAnterior !== 0) {
-        lista.push({ ...principal, tipo: 'ajuste', valor_total: rendimentoAnterior, observacao: 'Rendimento anterior ao cadastro' })
+      // Renda fixa antiga: aporte na data da aplicação + ajuste HOJE com a diferença entre o
+      // saldo informado e o que o CDI já explica (não conta o rendimento duas vezes).
+      if (comRendimentoAnterior) {
+        const aj = ajusteAplicacaoAntiga(ativo, data, total, saldoN, await cdiDesde(data), hojeSP())
+        if (aj.valor !== 0) {
+          lista.push({ ...principal, data: aj.data, tipo: 'ajuste', valor_total: aj.valor, observacao: 'Rendimento anterior ao cadastro' })
+        }
       }
       // Ação/FII antigo: aporte pelo preço médio + dividendos já recebidos.
       if (posicaoAntiga) {
@@ -203,7 +207,7 @@ export default function Lancamento() {
             </select>
           </div>
 
-          <Campo id="data" rotulo={comRendimentoAnterior || posicaoAntiga ? 'Data de hoje (ou do extrato)' : 'Data'}>
+          <Campo id="data" rotulo={comRendimentoAnterior ? 'Data da aplicação' : posicaoAntiga ? 'Data de hoje (ou do extrato)' : 'Data'}>
             <input id="data" type="date" className="campo" max={hojeSP()} value={data} onChange={(e) => setData(e.target.value)} required />
           </Campo>
 
@@ -268,14 +272,14 @@ export default function Lancamento() {
                 <input id="valor" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} />
               </Campo>
               {comRendimentoAnterior && (
-                <Campo id="saldo" rotulo="Saldo bruto atual (no banco)">
+                <Campo id="saldo" rotulo="Saldo bruto hoje (no banco)">
                   <input id="saldo" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={saldoAtual} onChange={(e) => setSaldoAtual(e.target.value)} />
                 </Campo>
               )}
               {comRendimentoAnterior && rendimentoAnterior !== 0 && (
                 <div className="text-xs text-texto-2">
-                  Rendimento até agora: <span className={rendimentoAnterior > 0 ? 'text-positivo' : 'text-negativo'}>{formatarBRL(rendimentoAnterior)}</span>. Use a
-                  data do saldo acima; a partir dela o app calcula pelo CDI.
+                  Rendimento até hoje: <span className={rendimentoAnterior > 0 ? 'text-positivo' : 'text-negativo'}>{formatarBRL(rendimentoAnterior)}</span>. A
+                  partir de hoje o app calcula pelo CDI.
                 </div>
               )}
             </>
