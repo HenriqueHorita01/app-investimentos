@@ -430,7 +430,7 @@ function LinhaAtivoPlano({ a, categoria, aoEditar }: { a: AtivoPlano; categoria:
             {rv ? (a.preco != null ? formatarBRL(a.preco) : '—') : at.aplicacao_minima != null ? formatarBRL(at.aplicacao_minima) : '—'}
           </div>
           {rv && a.preco != null && (
-            <div className="text-[10px] text-texto-2">{a.fontePreco === 'cotacao' && a.dataPreco ? formatarData(a.dataPreco).slice(0, 5) : 'referência'}</div>
+            <div className="text-[10px] text-texto-2">{a.fontePreco === 'cotacao' && a.dataPreco ? formatarData(a.dataPreco).slice(0, 5) : a.fontePreco === 'custo' ? 'custo médio' : 'referência'}</div>
           )}
         </div>
         <div>

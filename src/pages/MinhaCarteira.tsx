@@ -4,6 +4,8 @@ import { montarAtivoPlano, montarPlanejamento } from '../lib/carteiraPlano'
 import { useCarregar } from '../lib/useCarregar'
 import { Cartao, Carregando, Erro, Titulo } from '../components/ui'
 import { Planejamento } from '../components/carteira/Planejamento'
+import { Simulador } from '../components/carteira/Simulador'
+import { Prioridades } from '../components/carteira/Prioridades'
 
 const AREAS = [
   { id: 'planejamento', rotulo: 'Planejamento', etapa: 1 },
@@ -52,6 +54,10 @@ export default function MinhaCarteira() {
         <Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} />
       ) : area === 'planejamento' ? (
         <Planejamento dados={dados} aoMudar={recarregar} />
+      ) : area === 'simulador' ? (
+        <Simulador dados={dados} />
+      ) : area === 'prioridades' ? (
+        <Prioridades dados={dados} />
       ) : (
         <Cartao className="text-sm text-texto-2">
           A área <b className="text-texto">{AREAS.find((a) => a.id === area)!.rotulo}</b> chega na etapa {AREAS.find((a) => a.id === area)!.etapa} da
