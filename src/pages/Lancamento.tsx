@@ -26,9 +26,9 @@ export default function Lancamento() {
   /** '' = livre; senão, id do objetivo. */
   const [destino, setDestino] = useState(params.get('objetivo') ?? '')
   const [data, setData] = useState(hojeSP())
-  const [qtd, setQtd] = useState('')
-  const [preco, setPreco] = useState('')
-  const [valor, setValor] = useState('')
+  const [qtd, setQtd] = useState(params.get('qtd') ?? '')  // pode vir do simulador
+  const [preco, setPreco] = useState(params.get('preco') ?? '')  // pode vir do simulador
+  const [valor, setValor] = useState(params.get('valor') ?? '')  // pode vir do simulador
   /** Renda fixa: aplicação feita antes de usar o app, que já tem rendimento. */
   const [antiga, setAntiga] = useState(false)
   const [saldoAtual, setSaldoAtual] = useState('')
