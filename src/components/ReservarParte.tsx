@@ -16,23 +16,29 @@ export function ReservarParte({
   carteira,
   ativoFixo,
   objetivoFixo,
+  origemFixa,
   aoSalvar,
   aoCancelar,
 }: {
   carteira: Carteira
   ativoFixo?: string
   objetivoFixo?: string
+  /** Parte de onde o dinheiro sai (LIVRE ou id do destino); esconde o campo "Tirar de". */
+  origemFixa?: string
   aoSalvar: () => void
   aoCancelar: () => void
 }) {
   const ativos = carteira.ativos.filter((a) => a.posicao.valorAtual > 0.005)
   // Reserva de emergência primeiro, depois os objetivos em aberto.
   const destinos = [carteira.progressoReserva, ...carteira.progresso.filter((p) => !p.objetivo.concluido)]
-  const nomeDestino = (id: string) => (id === carteira.reserva.id ? 'Reserva de emergência' : (destinos.find((d) => d.objetivo.id === id)?.objetivo.nome ?? ''))
+  const nomeDestino = (id: string) =>
+    id === LIVRE ? 'Livre' : id === carteira.reserva.id ? 'Reserva de emergência' : (destinos.find((d) => d.objetivo.id === id)?.objetivo.nome ?? '')
+  // "Livre" também é destino quando o dinheiro sai de um objetivo/reserva.
+  const opcoesPara = [...destinos.map((d) => d.objetivo.id), ...(origemFixa && origemFixa !== LIVRE ? [LIVRE] : [])].filter((id) => id !== origemFixa)
 
   const [ativoId, setAtivoId] = useState(ativoFixo ?? ativos[0]?.id ?? '')
-  const [destinoId, setDestinoId] = useState(objetivoFixo ?? destinos[0].objetivo.id)
-  const [origemEscolhida, setOrigemEscolhida] = useState<string>(LIVRE)
+  const [destinoId, setDestinoId] = useState(objetivoFixo ?? opcoesPara[0] ?? LIVRE)
+  const [origemEscolhida, setOrigemEscolhida] = useState<string>(origemFixa ?? LIVRE)
   const [valor, setValor] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -53,13 +59,18 @@ export function ReservarParte({
     e.preventDefault()
     setErro(null)
     if (!ativo) return setErro('Escolha o investimento.')
-    if (!destino) return setErro('Escolha o destino.')
+    if (!destino && destinoId !== LIVRE) return setErro('Escolha o destino.')
     if (!origem) return setErro('Este investimento não tem saldo para mover.')
     if (!(v > 0)) return setErro('Informe o valor.')
     if (v > disponivel + 0.005) return setErro(`Em "${nomeOrigem}" há ${formatarBRL(disponivel)} neste investimento.`)
     setSalvando(true)
     try {
-      await moverEntreDestinos(ativo.id, origem.chave === LIVRE ? null : origem.chave, destino.objetivo.id, Math.min(1, v / disponivel))
+      await moverEntreDestinos(
+        ativo.id,
+        origem.chave === LIVRE ? null : origem.chave,
+        destinoId === LIVRE ? null : destinoId,
+        Math.min(1, v / disponivel),
+      )
       aoSalvar()
     } catch (err) {
       setErro(err instanceof Error ? err.message : String(err))
@@ -82,7 +93,11 @@ export function ReservarParte({
   return (
     <form onSubmit={salvar} className="flex flex-col gap-3 rounded-xl bg-fundo p-3">
       <div className="text-[13px] font-bold">
-        {objetivoFixo ? `Usar um investimento para ${nomeDestino(objetivoFixo)}` : 'Separar parte deste investimento'}
+        {objetivoFixo
+          ? `Usar um investimento para ${nomeDestino(objetivoFixo)}`
+          : origemFixa
+            ? `Mover parte de "${nomeDestino(origemFixa)}"`
+            : 'Separar parte deste investimento'}
       </div>
       {!ativoFixo && (
         <Campo id="rp-ativo" rotulo="Investimento">
@@ -101,8 +116,8 @@ export function ReservarParte({
       {!objetivoFixo && (
         <Campo id="rp-obj" rotulo="Para">
           <select id="rp-obj" className="campo" value={destinoId} onChange={(e) => setDestinoId(e.target.value)}>
-            {destinos.map((d) => (
-              <option key={d.objetivo.id} value={d.objetivo.id}>{nomeDestino(d.objetivo.id)}</option>
+            {opcoesPara.map((id) => (
+              <option key={id} value={id}>{nomeDestino(id)}</option>
             ))}
           </select>
         </Campo>
@@ -112,7 +127,9 @@ export function ReservarParte({
           Para separar para um objetivo, <Link to="/objetivos?novo=1" className="font-bold text-positivo">crie um objetivo</Link> primeiro.
         </div>
       )}
-      {origens.length > 0 ? (
+      {origemFixa ? (
+        <div className="text-xs text-texto-2">Em "{nomeDestino(origemFixa)}" há {formatarBRL(disponivel)} neste investimento.</div>
+      ) : origens.length > 0 ? (
         <Campo id="rp-origem" rotulo="Tirar de">
           <select id="rp-origem" className="campo" value={origem?.chave ?? ''} onChange={(e) => setOrigemEscolhida(e.target.value)}>
             {origens.map((o) => (

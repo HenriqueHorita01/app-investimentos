@@ -16,7 +16,7 @@ import {
   type EdicaoAtivo,
   type EdicaoMovimentacao,
 } from '../lib/dados'
-import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
+import { ajustesParaSaldo } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { partesDoAtivo } from '../lib/objetivos'
 import { BarraDestinos } from '../components/BarraDestinos'
@@ -295,11 +295,11 @@ function Dado({ rotulo, children, cor = '' }: { rotulo: string; children: ReactN
 }
 
 function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Carteira; aoMudar: () => void }) {
-  const [separando, setSeparando] = useState(false)
+  /** Parte cuja edição está aberta (LIVRE ou id do destino). */
+  const [movendo, setMovendo] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const p = a.posicao
   const partes = partesDoAtivo(p, carteira.objetivos, carteira.reserva)
-  const livre = p.porDestino[LIVRE]?.valorAtual ?? 0
 
   async function liberar(chave: string, nome: string, valor: number) {
     if (!confirm(`Liberar ${formatarBRL(valor)} de "${nome}"? Volta a ser livre neste investimento.`)) return
@@ -321,38 +321,50 @@ function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Ca
       <BarraDestinos partes={partes} altura="h-3" />
       <div className="flex flex-col gap-2">
         {partes.map((x) => (
-          <div key={x.chave} className="flex items-center justify-between gap-2 text-[13px]">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: x.cor }} />
-              <span className="truncate font-bold">{x.nome}</span>
-              <span className="shrink-0 text-xs text-texto-2">{formatarPercentual(x.fracao, false)}</span>
-            </span>
-            <span className="flex shrink-0 items-center gap-3">
-              <span className="font-mono">{formatarBRL(x.valor)}</span>
-              {x.tipo !== 'livre' && (
-                <button type="button" className="text-xs font-bold text-texto-2" onClick={() => liberar(x.chave, x.nome, x.valor)}>
-                  Liberar
+          <div key={x.chave} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2 text-[13px]">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: x.cor }} />
+                <span className="truncate font-bold">{x.nome}</span>
+                <span className="shrink-0 text-xs text-texto-2">{formatarPercentual(x.fracao, false)}</span>
+              </span>
+              <span className="shrink-0 font-mono">{formatarBRL(x.valor)}</span>
+            </div>
+            {movendo !== x.chave && (
+              <div className="flex gap-2 pl-[18px]">
+                <button
+                  type="button"
+                  onClick={() => setMovendo(x.chave)}
+                  className="rounded-lg border border-campo px-2.5 py-1 text-xs font-bold"
+                >
+                  Mover
                 </button>
-              )}
-            </span>
+                {x.tipo !== 'livre' && (
+                  <button
+                    type="button"
+                    onClick={() => liberar(x.chave, x.nome, x.valor)}
+                    className="rounded-lg border border-campo px-2.5 py-1 text-xs font-bold text-texto-2"
+                  >
+                    Liberar tudo
+                  </button>
+                )}
+              </div>
+            )}
+            {movendo === x.chave && (
+              <ReservarParte
+                carteira={carteira}
+                ativoFixo={a.id}
+                origemFixa={x.chave}
+                aoCancelar={() => setMovendo(null)}
+                aoSalvar={() => {
+                  setMovendo(null)
+                  aoMudar()
+                }}
+              />
+            )}
           </div>
         ))}
       </div>
-      {separando ? (
-        <ReservarParte
-          carteira={carteira}
-          ativoFixo={a.id}
-          aoCancelar={() => setSeparando(false)}
-          aoSalvar={() => {
-            setSeparando(false)
-            aoMudar()
-          }}
-        />
-      ) : (
-        <button type="button" onClick={() => setSeparando(true)} className="rounded-xl border border-campo p-3 text-center text-sm font-bold">
-          {livre >= 0.01 ? 'Separar parte para reserva ou objetivo' : 'Mover parte para outro destino'}
-        </button>
-      )}
       {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
     </Cartao>
   )
