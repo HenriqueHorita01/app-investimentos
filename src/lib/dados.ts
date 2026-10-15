@@ -246,14 +246,14 @@ export async function salvarCotacaoManual(ticker: string, data: string, fechamen
   erro(error)
 }
 
-// ============ Reservar parte do livre ============
+// ============ Dividir um ativo entre destinos ============
 
 /**
- * Reserva `valor` (em reais, valor atual) da parte livre do ativo para o objetivo.
- * Divide os lançamentos livres na proporção valor ÷ livre (função no banco, atômica).
+ * Move uma fração de um destino para outro no mesmo ativo (null = livre).
+ * Divide os lançamentos da origem na proporção (função no banco, atômica).
  */
-export async function reservarParteParaObjetivo(ativoId: string, objetivoId: string, fracao: number): Promise<void> {
-  const { error } = await supabase.rpc('reservar_para_objetivo', { p_ativo: ativoId, p_objetivo: objetivoId, p_fracao: fracao })
+export async function moverEntreDestinos(ativoId: string, origem: string | null, destino: string | null, fracao: number): Promise<void> {
+  const { error } = await supabase.rpc('mover_entre_destinos', { p_ativo: ativoId, p_origem: origem, p_destino: destino, p_fracao: fracao })
   erro(error)
 }
 
