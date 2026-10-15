@@ -13,7 +13,8 @@ Um ativo pode servir vários objetivos. O que não está alocado é **livre**.
 
 - **Patrimônio livre** = só o **excedente** gerado pelos investimentos: rendimento da renda fixa (saldo − aplicado) + dividendos/JCP de ações e FIIs. O dinheiro investido é de longo prazo ("esquecido") e não entra; a valorização das cotas também não (só existe se vender). Ex.: 10.000 em CDB + 500 em ações, CDB rendeu 100 e ações pagaram 5 → patrimônio livre = 105.
 - O que está reservado para objetivos continua sendo investimento (aparece na Carteira e rende), mas o rendimento dessa parte vai para o objetivo, não para o patrimônio livre.
-- **Reserva de emergência** é separada: o ativo inteiro é marcado como reserva, fica fora da Carteira e do patrimônio, e tem aba própria só para acompanhar o rendimento.
+- **Reserva de emergência** é um destino especial (objetivo do tipo `reserva_emergencia`, um por usuário): qualquer parte de um investimento pode ir para ela. Fica fora do patrimônio e tem aba própria para acompanhar saldo, meta e rendimento.
+- Um investimento pode ser dividido entre vários destinos: ex. 1.000 = 200 objetivo A + 300 objetivo B + 500 reserva (ou livre). A Carteira mostra essa divisão em barra e %.
 
 ## 2. Stack
 
@@ -165,7 +166,7 @@ Fontes: DM Sans (texto), DM Mono (números).
 - Site responsivo (PWA), não app nativo.
 - Alocação por valor fixo em reais.
 - Usuário único no início, mas com login e RLS desde o começo.
-- (14/10/2026) Patrimônio livre = rendimentos da renda fixa + dividendos (investido e valorização ficam fora). Reservado para objetivo não conta como patrimônio; rendimento da parte reservada vai para o objetivo; reserva de emergência por ativo inteiro, em aba própria; CDI automático (Fase 3) antecipado.
+- (14/10/2026) Patrimônio livre = rendimentos da renda fixa + dividendos (investido e valorização ficam fora). Reservado para objetivo não conta como patrimônio; rendimento da parte reservada vai para o objetivo; reserva de emergência em aba própria (desde 15/10/2026 é um destino que recebe partes de investimentos, não mais o ativo inteiro); CDI automático (Fase 3) antecipado.
 
 ## 10. Em aberto
 
