@@ -20,7 +20,7 @@ import { ajustesParaSaldo } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { partesDoAtivo } from '../lib/objetivos'
 import { BarraDestinos } from '../components/BarraDestinos'
-import { ehRendaVariavel, NOME_TIPO, rotuloAtivo, type Movimentacao, type TipoAtivo } from '../lib/tipos'
+import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, rotuloAtivo, type Indexador, type Movimentacao, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
 import { ReservarParte } from '../components/ReservarParte'
@@ -74,7 +74,7 @@ export default function Ativo() {
           <div className="text-[13px] text-texto-2">
             {rv
               ? [NOME_TIPO[a.tipo], a.ticker !== a.nome ? a.nome : null, a.instituicao].filter(Boolean).join(' · ')
-              : [`CDB ${a.taxa ? formatarNumero(a.taxa) + '% CDI' : ''}`, a.vencimento && `vence ${formatarData(a.vencimento)}`, a.instituicao].filter(Boolean).join(' · ')}
+              : [`${NOME_TIPO[a.tipo]} ${descreverTaxa(a)}`, a.vencimento && `vence ${formatarData(a.vencimento)}`, a.instituicao].filter(Boolean).join(' · ')}
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -190,6 +190,9 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
   const [nome, setNome] = useState(rv && a.nome === a.ticker ? '' : a.nome)
   const [instituicao, setInstituicao] = useState(a.instituicao ?? '')
   const [taxa, setTaxa] = useState(a.taxa != null ? String(a.taxa).replace('.', ',') : '')
+  const [indexador, setIndexador] = useState<Indexador>(a.indexador === 'nenhum' ? 'cdi' : a.indexador)
+  const [tipoRf, setTipoRf] = useState<TipoAtivo>(a.tipo)
+  const idx = INDEXADORES.find((i) => i.id === indexador) ?? INDEXADORES[0]
   const [vencimento, setVencimento] = useState(a.vencimento ?? '')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -205,10 +208,10 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
       if (!/^[A-Z]{4}\d{1,2}[A-Z]?$/.test(tk)) return setErro('Ticker inválido. Ex.: HGLG11, PETR4.')
       campos = { tipo, ticker: tk, nome: nome.trim() || tk, instituicao: instituicao.trim() || null }
     } else {
-      const taxaN = lerNumero(taxa)
+      const taxaN = taxa.trim() ? lerNumero(taxa) : null
       if (!nome.trim()) return setErro('Informe um nome.')
-      if (!(taxaN > 0)) return setErro('Informe a taxa (% do CDI). Ex.: 115.')
-      campos = { nome: nome.trim(), taxa: taxaN, vencimento: vencimento || null, instituicao: instituicao.trim() || null }
+      if (idx.taxaObrigatoria && !(taxaN != null && taxaN > 0)) return setErro(`Informe a taxa (${idx.rotuloTaxa}). Ex.: ${idx.exemplo}.`)
+      campos = { tipo: tipoRf, nome: nome.trim(), indexador, taxa: taxaN, vencimento: vencimento || null, instituicao: instituicao.trim() || null }
     }
     setSalvando(true)
     try {
@@ -226,8 +229,8 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
         <div className="text-sm font-bold">Editar ativo</div>
         {rv ? (
           <>
-            <div className="grid grid-cols-2 gap-1 rounded-xl bg-segmento p-1" role="tablist" aria-label="Tipo de ativo">
-              {(['fii', 'acao'] as const).map((t) => (
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-segmento p-1" role="tablist" aria-label="Tipo de ativo">
+              {(['fii', 'acao', 'etf'] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -258,14 +261,32 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
               <input id="ea-nome" className="campo" value={nome} onChange={(e) => setNome(e.target.value)} />
             </Campo>
             <div className="grid grid-cols-2 gap-3">
-              <Campo id="ea-taxa" rotulo="Taxa (% do CDI)">
+              <Campo id="ea-taxa" rotulo={idx.rotuloTaxa}>
                 <input id="ea-taxa" className="campo font-mono" inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} />
               </Campo>
               <Campo id="ea-venc" rotulo="Vencimento">
                 <input id="ea-venc" type="date" className="campo !px-2 !text-sm" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
               </Campo>
             </div>
-            <div className="text-xs text-texto-2">Mudar a taxa recalcula todo o rendimento desde a primeira aplicação.</div>
+            <div className="grid grid-cols-2 gap-3">
+              <Campo id="ea-tipo" rotulo="Tipo">
+                <select id="ea-tipo" className="campo" value={tipoRf} onChange={(e) => setTipoRf(e.target.value as TipoAtivo)}>
+                  {(['cdb', 'lci_lca', 'tesouro'] as const).map((t) => (
+                    <option key={t} value={t}>{NOME_TIPO[t]}</option>
+                  ))}
+                </select>
+              </Campo>
+              <Campo id="ea-idx" rotulo="Indexador">
+                <select id="ea-idx" className="campo" value={indexador} onChange={(e) => setIndexador(e.target.value as Indexador)}>
+                  {INDEXADORES.map((i) => (
+                    <option key={i.id} value={i.id}>{i.nome}</option>
+                  ))}
+                </select>
+              </Campo>
+            </div>
+            <div className="text-xs text-texto-2">
+              Mudar a taxa recalcula todo o rendimento desde a primeira aplicação. Cálculo automático só para % do CDI; nos outros, use "Corrigir saldo".
+            </div>
           </>
         )}
         <Campo id="ea-inst" rotulo="Instituição / corretora (opcional)">

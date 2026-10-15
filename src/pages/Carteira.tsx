@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { carregarCarteira, type AtivoComPosicao, type Carteira as DadosCarteira } from '../lib/dados'
-import { classeDoTipo, ehRendaVariavel, NOME_CLASSE, NOME_TIPO, rotuloAtivo, type Classe } from '../lib/tipos'
+import { classeDoTipo, descreverTaxa, ehRendaVariavel, NOME_CLASSE, NOME_TIPO, rotuloAtivo, type Classe } from '../lib/tipos'
 import { partesDeDestinos, partesDoAtivo, somarDestinos } from '../lib/objetivos'
 import { BarraDestinos, LegendaCompacta, LegendaDetalhada } from '../components/BarraDestinos'
 import { formatarBRLInteiro, formatarCompacto, formatarNumero, formatarPercentual } from '../lib/formato'
@@ -35,7 +35,9 @@ export default function Carteira() {
   if (carregando && !dados) return <>{cabecalho}<Carregando /></>
   if (erro || !dados) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
 
-  const ativos = dados.ativos
+  // Investimentos só planejados na Minha Carteira (sem lançamentos) não aparecem aqui.
+  const ativos = dados.ativos.filter((a) => a.movimentacoes.length > 0)
+  const planejados = dados.ativos.length - ativos.length
   if (!ativos.length) {
     return (
       <>
@@ -115,6 +117,12 @@ export default function Carteira() {
           <LinhaAtivo key={a.id} a={a} dados={dados} ultima={i === lista.length - 1} />
         ))}
       </div>
+
+      {planejados > 0 && (
+        <Link to="/minha-carteira" className="px-1 text-xs text-texto-2">
+          + {planejados} investimento(s) planejado(s) ainda sem compra — ver na <b className="text-positivo">Minha Carteira</b>
+        </Link>
+      )}
     </>
   )
 }
@@ -125,7 +133,7 @@ function LinhaAtivo({ a, dados, ultima }: { a: AtivoComPosicao; dados: DadosCart
   const partes = partesDoAtivo(p, dados.objetivos, dados.reserva)
   const sub = rv
     ? `${NOME_TIPO[a.tipo]} · ${formatarNumero(p.quantidade)} ${p.quantidade === 1 ? 'cota' : 'cotas'}`
-    : `Renda fixa${a.taxa ? ` · ${formatarNumero(a.taxa)}% ${a.indexador.toUpperCase()}` : ''}`
+    : `${NOME_TIPO[a.tipo]}${descreverTaxa(a) ? ` · ${descreverTaxa(a)}` : ''}`
   return (
     <Link to={`/ativo/${a.id}`} className={`flex flex-col gap-2 px-4 py-3.5 ${ultima ? '' : 'border-b border-linha'}`}>
       <div className="flex justify-between gap-3">
