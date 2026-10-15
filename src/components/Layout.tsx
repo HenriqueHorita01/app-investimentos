@@ -17,6 +17,15 @@ const ITENS = [
     ),
   },
   {
+    para: '/minha-carteira',
+    rotulo: 'Minha Carteira',
+    icone: (
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />
+      </>
+    ),
+  },
+  {
     para: '/objetivos',
     rotulo: 'Objetivos',
     icone: (
@@ -51,14 +60,14 @@ export default function Layout() {
         <Outlet />
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-borda bg-cartao pb-[max(env(safe-area-inset-bottom),12px)]">
-        <div className="mx-auto grid max-w-md grid-cols-5 pt-2">
+        <div className="mx-auto grid max-w-md grid-cols-6 pt-2">
           {ITENS.map((i) => (
             <NavLink
               key={i.para}
               to={i.para}
               end={i.para === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 py-1.5 text-[11px] ${isActive ? 'font-bold text-positivo' : 'text-texto-2'}`
+                `flex flex-col items-center gap-1 py-1.5 text-center text-[10px] leading-tight ${isActive ? 'font-bold text-positivo' : 'text-texto-2'}`
               }
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

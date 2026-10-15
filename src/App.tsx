@@ -8,6 +8,7 @@ import Inicio from './pages/Inicio'
 import Carteira from './pages/Carteira'
 import Objetivos from './pages/Objetivos'
 import Reserva from './pages/Reserva'
+import MinhaCarteira from './pages/MinhaCarteira'
 import Lancamento from './pages/Lancamento'
 import Ativo from './pages/Ativo'
 import NovoAtivo from './pages/NovoAtivo'
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="carteira" element={<Carteira />} />
         <Route path="objetivos" element={<Objetivos />} />
         <Route path="reserva" element={<Reserva />} />
+        <Route path="minha-carteira" element={<MinhaCarteira />} />
         <Route path="lancar" element={<Lancamento />} />
         <Route path="ativos/novo" element={<NovoAtivo />} />
         <Route path="ativo/:id" element={<Ativo />} />
