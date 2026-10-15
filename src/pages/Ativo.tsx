@@ -349,11 +349,9 @@ function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Ca
           }}
         />
       ) : (
-        livre >= 0.01 && (
-          <button type="button" onClick={() => setSeparando(true)} className="rounded-xl border border-campo p-3 text-center text-sm font-bold">
-            Separar parte para reserva ou objetivo
-          </button>
-        )
+        <button type="button" onClick={() => setSeparando(true)} className="rounded-xl border border-campo p-3 text-center text-sm font-bold">
+          {livre >= 0.01 ? 'Separar parte para reserva ou objetivo' : 'Mover parte para outro destino'}
+        </button>
       )}
       {erro && <div role="alert" className="text-sm text-negativo">{erro}</div>}
     </Cartao>
