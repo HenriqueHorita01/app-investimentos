@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { carregarCarteira, type AtivoComPosicao } from '../lib/dados'
+import { carregarCarteira, type AtivoComPosicao, type Carteira as DadosCarteira } from '../lib/dados'
 import { classeDoTipo, ehRendaVariavel, NOME_CLASSE, NOME_TIPO, rotuloAtivo, type Classe } from '../lib/tipos'
-import { LIVRE } from '../lib/calculos'
+import { partesDeDestinos, partesDoAtivo, somarDestinos } from '../lib/objetivos'
+import { BarraDestinos, LegendaCompacta, LegendaDetalhada } from '../components/BarraDestinos'
 import { formatarBRLInteiro, formatarCompacto, formatarNumero, formatarPercentual } from '../lib/formato'
 import { useCarregar } from '../lib/useCarregar'
 import { Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
@@ -34,8 +35,7 @@ export default function Carteira() {
   if (carregando && !dados) return <>{cabecalho}<Carregando /></>
   if (erro || !dados) return <>{cabecalho}<Erro mensagem={erro ?? 'Erro ao carregar.'} tentar={recarregar} /></>
 
-  // A reserva de emergência tem aba própria.
-  const ativos = dados.ativos.filter((a) => a.finalidade === 'investimento')
+  const ativos = dados.ativos
   if (!ativos.length) {
     return (
       <>
@@ -61,9 +61,22 @@ export default function Carteira() {
     .filter((a) => filtro === 'todos' || classeDoTipo(a.tipo) === filtro)
     .sort((a, b) => b.posicao.valorAtual - a.posicao.valorAtual)
 
+  const distribuicao = partesDeDestinos(somarDestinos(ativos.map((a) => a.posicao)), dados.objetivos, dados.reserva)
+
   return (
     <>
       {cabecalho}
+
+      {distribuicao.length > 0 && (
+        <Cartao className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <div className="text-sm font-bold">Para onde vai o dinheiro</div>
+            <div className="font-mono text-[13px] text-texto-2">{formatarBRLInteiro(total)}</div>
+          </div>
+          <BarraDestinos partes={distribuicao} altura="h-3" />
+          <LegendaDetalhada partes={distribuicao} />
+        </Cartao>
+      )}
 
       <Cartao className="flex items-center gap-[18px]">
         <Rosca total={total} fatias={porClasse.map((c) => ({ valor: c.valor, cor: COR_CLASSE[c.classe], rotulo: NOME_CLASSE[c.classe] }))} />
@@ -99,28 +112,26 @@ export default function Carteira() {
 
       <div className="flex flex-col overflow-hidden rounded-[14px] bg-cartao">
         {lista.map((a, i) => (
-          <LinhaAtivo key={a.id} a={a} ultima={i === lista.length - 1} />
+          <LinhaAtivo key={a.id} a={a} dados={dados} ultima={i === lista.length - 1} />
         ))}
       </div>
     </>
   )
 }
 
-function LinhaAtivo({ a, ultima }: { a: AtivoComPosicao; ultima: boolean }) {
+function LinhaAtivo({ a, dados, ultima }: { a: AtivoComPosicao; dados: DadosCarteira; ultima: boolean }) {
   const p = a.posicao
   const rv = ehRendaVariavel(a.tipo)
-  const reservado = Object.entries(p.porDestino)
-    .filter(([d]) => d !== LIVRE)
-    .reduce((s, [, x]) => s + x.valorAtual, 0)
+  const partes = partesDoAtivo(p, dados.objetivos, dados.reserva)
   const sub = rv
     ? `${NOME_TIPO[a.tipo]} · ${formatarNumero(p.quantidade)} ${p.quantidade === 1 ? 'cota' : 'cotas'}`
     : `Renda fixa${a.taxa ? ` · ${formatarNumero(a.taxa)}% ${a.indexador.toUpperCase()}` : ''}`
   return (
-    <Link to={`/ativo/${a.id}`} className={`flex justify-between gap-3 px-4 py-3.5 ${ultima ? '' : 'border-b border-linha'}`}>
+    <Link to={`/ativo/${a.id}`} className={`flex flex-col gap-2 px-4 py-3.5 ${ultima ? '' : 'border-b border-linha'}`}>
+      <div className="flex justify-between gap-3">
       <div className="min-w-0">
         <div className="truncate text-sm font-bold">{rotuloAtivo(a)}</div>
         <div className="text-xs text-texto-2">{sub}</div>
-        {reservado > 0.005 && <div className="text-xs text-reservado-texto">{formatarBRLInteiro(reservado)} reservado</div>}
       </div>
       <div className="shrink-0 text-right">
         <div className="font-mono text-sm">{formatarBRLInteiro(p.valorAtual)}</div>
@@ -132,6 +143,13 @@ function LinhaAtivo({ a, ultima }: { a: AtivoComPosicao; ultima: boolean }) {
           <div className={`text-xs ${corSinal(p.variacao)}`}>{formatarPercentual(p.variacaoPercentual)}</div>
         )}
       </div>
+      </div>
+      {partes.length > 0 && (
+        <>
+          <BarraDestinos partes={partes} />
+          <LegendaCompacta partes={partes} />
+        </>
+      )}
     </Link>
   )
 }
