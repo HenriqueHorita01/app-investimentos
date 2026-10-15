@@ -1,7 +1,7 @@
 export type TipoAtivo = 'fii' | 'acao' | 'cdb' | 'lci_lca' | 'tesouro' | 'etf' | 'outro'
 export type Indexador = 'cdi' | 'ipca' | 'pre' | 'selic' | 'nenhum'
 export type TipoMovimentacao = 'aporte' | 'resgate' | 'dividendo' | 'jcp' | 'amortizacao' | 'ajuste'
-/** investimento = carteira normal; reserva_emergencia = aba Reserva, fora do patrimônio. */
+/** Coluna legada: a reserva de emergência agora é um destino (objetivo do tipo reserva). */
 export type Finalidade = 'investimento' | 'reserva_emergencia'
 
 export interface Ativo {
@@ -27,7 +27,7 @@ export interface Movimentacao {
   preco_unitario: number | null
   valor_total: number
   observacao: string | null
-  /** null = livre (conta no patrimônio). */
+  /** null = livre; senão, id do objetivo ou da reserva de emergência. */
   objetivo_id: string | null
   criado_em: string
 }
@@ -35,7 +35,10 @@ export interface Movimentacao {
 export interface Objetivo {
   id: string
   nome: string
-  valor_alvo: number
+  /** null só na reserva de emergência sem meta. */
+  valor_alvo: number | null
+  /** 'reserva_emergencia' = destino especial da aba Reserva (um por usuário). */
+  tipo: 'objetivo' | 'reserva_emergencia'
   prazo: string | null
   cor: string | null
   concluido: boolean

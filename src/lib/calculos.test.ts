@@ -132,34 +132,53 @@ describe('resumo', () => {
     // Investiu 10.000 em CDB e 500 em ações; o CDB rendeu 100 e as ações pagaram 5 de dividendos.
     const cdb = calcularPosicao({ ...CDB100, indexador: 'pre' }, [mov('aporte', 10000), mov('ajuste', 100)], null)
     const acao = calcularPosicao({ ...FII, tipo: 'acao' }, [mov('aporte', 500, 10), mov('dividendo', 5)], 50)
-    const r = resumir([
-      { tipo: 'cdb', finalidade: 'investimento', posicao: cdb },
-      { tipo: 'acao', finalidade: 'investimento', posicao: acao },
-    ])
+    const r = resumir(
+      [
+        { tipo: 'cdb', posicao: cdb },
+        { tipo: 'acao', posicao: acao },
+      ],
+      null,
+    )
     expect(r.patrimonio).toBeCloseTo(105)
     expect(r.rendimentoRendaFixa).toBeCloseTo(100)
     expect(r.proventos).toBeCloseTo(5)
     expect(r.investido).toBeCloseTo(10500)
   })
 
-  it('valorização das cotas, objetivos e reserva de emergência ficam fora do patrimônio livre', () => {
+  it('um investimento dividido entre objetivos, reserva e livre', () => {
+    // 1.000 num CDB: 200 para um objetivo, 300 para outro, 500 para a reserva de emergência.
+    const cdb = calcularPosicao(
+      { ...CDB100, indexador: 'pre' },
+      [
+        mov('aporte', 200, null, { objetivo_id: 'viagem' }),
+        mov('aporte', 300, null, { objetivo_id: 'presente' }),
+        mov('aporte', 500, null, { objetivo_id: 'reserva' }),
+        mov('ajuste', 10, null, { objetivo_id: 'reserva' }),
+      ],
+      null,
+    )
+    const r = resumir([{ tipo: 'cdb', posicao: cdb }], 'reserva')
+    expect(r.reservado).toBeCloseTo(500)
+    expect(r.reservaEmergencia).toBeCloseTo(510)
+    expect(r.reservaInvestido).toBeCloseTo(500)
+    // O rendimento da parte da reserva não entra no patrimônio livre.
+    expect(r.patrimonio).toBeCloseTo(0)
+    expect(r.investido).toBeCloseTo(0)
+  })
+
+  it('valorização das cotas fica fora do patrimônio livre', () => {
     const fii = calcularPosicao(FII, [mov('aporte', 1000, 10), mov('aporte', 500, 5, { objetivo_id: 'viagem' }), mov('dividendo', 12)], 110)
-    const reserva = calcularPosicao(CDB100, [mov('aporte', 5000), mov('ajuste', 300)], null)
-    const r = resumir([
-      { tipo: 'fii', finalidade: 'investimento', posicao: fii },
-      { tipo: 'cdb', finalidade: 'reserva_emergencia', posicao: reserva },
-    ])
+    const r = resumir([{ tipo: 'fii', posicao: fii }], null)
     expect(r.patrimonio).toBeCloseTo(12)
     expect(r.valorizacao).toBeCloseTo(100)
     expect(r.valorInvestido).toBeCloseTo(1100)
     expect(r.reservado).toBeCloseTo(550)
-    expect(r.reservaEmergencia).toBeCloseTo(5300)
   })
 })
 
 describe('objetivos', () => {
   it('progresso = valor atual das partes reservadas ÷ valor-alvo', () => {
-    const viagem: Objetivo = { id: 'viagem', nome: 'Viagem', valor_alvo: 2000, prazo: null, cor: null, concluido: false, criado_em: '' }
+    const viagem: Objetivo = { id: 'viagem', nome: 'Viagem', valor_alvo: 2000, tipo: 'objetivo', prazo: null, cor: null, concluido: false, criado_em: '' }
     const p = calcularPosicao(FII, [mov('aporte', 1000, 10, { objetivo_id: 'viagem' })], 110)
     const [pr] = progressoObjetivos([viagem], [{ id: 'a', rotulo: 'HGLG11', posicao: p }])
     expect(pr.valorAtual).toBeCloseTo(1100)

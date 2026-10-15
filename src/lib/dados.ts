@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Ativo, CdiDia, Cotacao, Finalidade, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
+import type { Ativo, CdiDia, Cotacao, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
 import { ehRendaVariavel, rotuloAtivo } from './tipos'
 import { calcularPosicao, progressoObjetivos, type Posicao, type ProgressoObjetivo } from './calculos'
 
@@ -11,8 +11,12 @@ export interface AtivoComPosicao extends Ativo {
 
 export interface Carteira {
   ativos: AtivoComPosicao[]
+  /** Objetivos comuns (sem a reserva de emergência). */
   objetivos: Objetivo[]
   progresso: ProgressoObjetivo[]
+  /** Destino especial "Reserva de emergência" (criado na primeira carga). */
+  reserva: Objetivo
+  progressoReserva: ProgressoObjetivo
   /** Último dia com CDI gravado (null se a tabela estiver vazia). */
   cdiAte: string | null
   /** CDI do último dia, % ao dia. */
@@ -78,7 +82,9 @@ export async function carregarCarteira(): Promise<Carteira> {
   erro(objetivosR.error)
   erro(cdiUltR.error)
   const ativos = (ativosR.data ?? []) as Ativo[]
-  const objetivos = ((objetivosR.data ?? []) as Objetivo[]).map((o) => ({ ...o, valor_alvo: Number(o.valor_alvo) }))
+  const todosObjetivos = ((objetivosR.data ?? []) as Objetivo[]).map((o) => ({ ...o, valor_alvo: num(o.valor_alvo) }))
+  const objetivos = todosObjetivos.filter((o) => o.tipo !== 'reserva_emergencia')
+  const reserva = todosObjetivos.find((o) => o.tipo === 'reserva_emergencia') ?? (await criarReserva())
   const movs = movsBrutas.map(normalizarMov)
 
   // CDI só desde a primeira aplicação em renda fixa atrelada ao CDI.
@@ -95,18 +101,34 @@ export async function carregarCarteira(): Promise<Carteira> {
     return { ...a, movimentacoes: doAtivo, ultimaCotacao: c, posicao: calcularPosicao(a, doAtivo, c?.fechamento ?? null, cdi) }
   })
 
-  const investimentos = comPosicao.filter((a) => a.finalidade === 'investimento')
+  const usos = comPosicao.map((a) => ({ id: a.id, rotulo: rotuloAtivo(a), posicao: a.posicao }))
   return {
     ativos: comPosicao,
     objetivos,
-    progresso: progressoObjetivos(
-      objetivos,
-      investimentos.map((a) => ({ id: a.id, rotulo: rotuloAtivo(a), posicao: a.posicao })),
-    ),
+    progresso: progressoObjetivos(objetivos, usos),
+    reserva,
+    progressoReserva: progressoObjetivos([reserva], usos)[0],
     cdiAte: cdiUltR.data?.[0]?.data ?? null,
     cdiUltimo: cdiUltR.data?.[0] ? Number(cdiUltR.data[0].taxa_dia) : null,
     cdi,
   }
+}
+
+/** Cria o destino "Reserva de emergência" do usuário (um por usuário; índice único no banco). */
+async function criarReserva(): Promise<Objetivo> {
+  const { data, error } = await supabase
+    .from('objetivos')
+    .insert({ nome: 'Reserva de emergência', tipo: 'reserva_emergencia', cor: '#0E8A8A', valor_alvo: null })
+    .select()
+    .single()
+  if (error?.code === '23505') {
+    // Outra aba criou ao mesmo tempo: busca a existente.
+    const r = await supabase.from('objetivos').select('*').eq('tipo', 'reserva_emergencia').single()
+    erro(r.error)
+    return { ...(r.data as Objetivo), valor_alvo: num(r.data.valor_alvo) }
+  }
+  erro(error)
+  return { ...(data as Objetivo), valor_alvo: num(data.valor_alvo) }
 }
 
 /** Recalcula a posição do ativo com uma lista de lançamentos alterada (para validar antes de gravar). */
@@ -124,7 +146,6 @@ export interface NovoAtivo {
   indexador: Ativo['indexador']
   taxa: number | null
   vencimento: string | null
-  finalidade: Finalidade
 }
 
 export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
@@ -133,15 +154,10 @@ export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
   return data as Ativo
 }
 
-export type EdicaoAtivo = Partial<Pick<Ativo, 'tipo' | 'ticker' | 'nome' | 'instituicao' | 'taxa' | 'vencimento' | 'finalidade'>>
+export type EdicaoAtivo = Partial<Pick<Ativo, 'tipo' | 'ticker' | 'nome' | 'instituicao' | 'taxa' | 'vencimento'>>
 
 export async function atualizarAtivo(id: string, campos: EdicaoAtivo): Promise<void> {
   const { error } = await supabase.from('ativos').update(campos).eq('id', id)
-  erro(error)
-}
-
-export async function alterarFinalidade(id: string, finalidade: Finalidade): Promise<void> {
-  const { error } = await supabase.from('ativos').update({ finalidade }).eq('id', id)
   erro(error)
 }
 
@@ -203,7 +219,10 @@ export async function criarObjetivo(dados: DadosObjetivo): Promise<Objetivo> {
   return data as Objetivo
 }
 
-export async function atualizarObjetivo(id: string, dados: Partial<DadosObjetivo> & { concluido?: boolean }): Promise<void> {
+export async function atualizarObjetivo(
+  id: string,
+  dados: Partial<Omit<DadosObjetivo, 'valor_alvo'>> & { valor_alvo?: number | null; concluido?: boolean },
+): Promise<void> {
   const { error } = await supabase.from('objetivos').update(dados).eq('id', id)
   erro(error)
 }
@@ -224,25 +243,6 @@ export async function salvarCotacaoManual(ticker: string, data: string, fechamen
   if (error?.code === '42501') {
     throw new Error('Já existe uma cotação automática para esta data. Escolha outra data.')
   }
-  erro(error)
-}
-
-// ============ Preferências ============
-
-export async function carregarMetaReserva(): Promise<number | null> {
-  const { data, error } = await supabase.from('preferencias').select('meta_reserva').maybeSingle()
-  erro(error)
-  return data?.meta_reserva != null ? Number(data.meta_reserva) : null
-}
-
-/** Grava a meta da reserva (null remove a meta). */
-export async function salvarMetaReserva(meta: number | null): Promise<void> {
-  const { data: s } = await supabase.auth.getSession()
-  const user_id = s.session?.user.id
-  if (!user_id) throw new Error('Sessão expirada. Entre de novo.')
-  const { error } = await supabase
-    .from('preferencias')
-    .upsert({ user_id, meta_reserva: meta, atualizado_em: new Date().toISOString() }, { onConflict: 'user_id' })
   erro(error)
 }
 

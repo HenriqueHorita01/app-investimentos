@@ -1,4 +1,4 @@
-import type { Ativo, CdiDia, Finalidade, Movimentacao, Objetivo } from './tipos'
+import type { Ativo, CdiDia, Movimentacao, Objetivo } from './tipos'
 import { ehRendaVariavel } from './tipos'
 
 /** Chave do destino "livre" (lançamentos sem objetivo). */
@@ -195,7 +195,6 @@ export function disponivel(p: Posicao, rendaVariavel: boolean, dest: string): nu
 
 export interface ItemResumo {
   tipo: Ativo['tipo']
-  finalidade: Finalidade
   posicao: Posicao
 }
 
@@ -220,12 +219,13 @@ export interface Resumo {
   /** Reservado para objetivos (conta como investimento, não como patrimônio). */
   reservado: number
   reservadoInvestido: number
-  /** Reserva de emergência (aba própria, fora do patrimônio). */
+  /** Parte destinada à reserva de emergência (aba própria, fora do patrimônio). */
   reservaEmergencia: number
   reservaInvestido: number
 }
 
-export function resumir(itens: ItemResumo[]): Resumo {
+/** `reservaId`: id do destino reserva de emergência (null se o usuário não tem). */
+export function resumir(itens: ItemResumo[], reservaId: string | null): Resumo {
   const r: Resumo = {
     patrimonio: 0,
     rendimentoRendaFixa: 0,
@@ -238,12 +238,7 @@ export function resumir(itens: ItemResumo[]): Resumo {
     reservaEmergencia: 0,
     reservaInvestido: 0,
   }
-  for (const { tipo, finalidade, posicao: p } of itens) {
-    if (finalidade === 'reserva_emergencia') {
-      r.reservaEmergencia += p.valorAtual
-      r.reservaInvestido += p.investido
-      continue
-    }
+  for (const { tipo, posicao: p } of itens) {
     r.proventos += p.proventos
     const rv = ehRendaVariavel(tipo)
     for (const [d, parcela] of Object.entries(p.porDestino)) {
@@ -252,6 +247,9 @@ export function resumir(itens: ItemResumo[]): Resumo {
         r.valorInvestido += parcela.valorAtual
         if (rv) r.valorizacao += parcela.valorAtual - parcela.investido
         else r.rendimentoRendaFixa += parcela.valorAtual - parcela.investido
+      } else if (d === reservaId) {
+        r.reservaEmergencia += parcela.valorAtual
+        r.reservaInvestido += parcela.investido
       } else {
         r.reservado += parcela.valorAtual
         r.reservadoInvestido += parcela.investido
@@ -292,7 +290,7 @@ export function progressoObjetivos(
       objetivo: o,
       valorAtual,
       investido,
-      progresso: o.valor_alvo > 0 ? valorAtual / o.valor_alvo : 0,
+      progresso: o.valor_alvo && o.valor_alvo > 0 ? valorAtual / o.valor_alvo : 0,
       ativos: usos.map(({ ativoId, rotulo, valorAtual, investido }) => ({ ativoId, rotulo, valorAtual, investido })),
     }
   })
