@@ -58,10 +58,10 @@ export function Prioridades({ dados }: { dados: DadosMinhaCarteira }) {
       aporte,
     )
 
-  if (!itens.length) {
+  if (!categorias.length) {
     return (
       <Cartao className="text-sm text-texto-2">
-        Cadastre investimentos nas categorias em{' '}
+        Configure as categorias em{' '}
         <button type="button" className="font-bold text-positivo" onClick={() => setParams({ area: 'planejamento' })}>
           Planejamento
         </button>{' '}

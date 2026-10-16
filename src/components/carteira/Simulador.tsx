@@ -56,7 +56,7 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
     setParams(p, { replace: true })
   }
 
-  const semCarteira = itens.length === 0
+  const semCategorias = categorias.length === 0
   const passou = resultado ? resultado.totalEfetivo - resultado.orcamento : 0
   const errosMinimo = resultado?.linhas.filter((l) => !l.item.rendaVariavel && l.efetivo > 0 && l.efetivo + 1e-9 < (l.item.aplicacaoMinima ?? 0)) ?? []
 
@@ -101,9 +101,9 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
         </div>
       </Cartao>
 
-      {semCarteira && (
+      {semCategorias && (
         <Cartao className="text-sm text-texto-2">
-          Nenhum investimento nas categorias ainda. Configure em{' '}
+          Nenhuma categoria configurada. Configure em{' '}
           <button type="button" className="font-bold text-positivo" onClick={() => setParams({ area: 'planejamento' })}>
             Planejamento
           </button>
@@ -111,24 +111,33 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
         </Cartao>
       )}
 
-      {resultado && !semCarteira && (
+      {resultado && !semCategorias && (
         <>
           <Avisos resultado={resultado} />
 
-          <Cartao className="grid grid-cols-3 gap-2 text-center">
+          <PorTipo resultado={resultado} dados={dados} />
+
+          <Cartao className="grid grid-cols-2 gap-x-2 gap-y-3 text-center">
             <div>
               <div className="text-xs text-texto-2">Orçamento</div>
               <div className="font-mono text-[15px]">{formatarBRL(resultado.orcamento)}</div>
             </div>
             <div>
-              <div className="text-xs text-texto-2">Compras</div>
+              <div className="text-xs text-texto-2">Compras simuladas</div>
               <div className={`font-mono text-[15px] ${passou > 0.004 ? 'text-negativo' : ''}`}>{formatarBRL(resultado.totalEfetivo)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-texto-2">A definir</div>
+              <div className="font-mono text-[15px]">{formatarBRL(resultado.aDefinir)}</div>
             </div>
             <div>
               <div className="text-xs text-texto-2">Sobra</div>
               <div className="font-mono text-[15px] text-reservado-texto">{formatarBRL(Math.max(0, resultado.sobra))}</div>
             </div>
-            <div className="col-span-3 text-[11px] text-texto-2">A sobra fica guardada para os próximos aportes (sem rendimento).</div>
+            <div className="col-span-2 text-[11px] text-texto-2">
+              "A definir" é o valor de tipos em que você ainda não escolheu o investimento. A sobra (o que não fecha uma cota ou o mínimo) fica
+              guardada para os próximos aportes, sem rendimento.
+            </div>
           </Cartao>
           {passou > 0.004 && (
             <div role="alert" className="rounded-xl bg-cartao p-3 text-sm text-negativo">
@@ -142,6 +151,8 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
           ))}
 
           <AntesDepois resultado={resultado} />
+
+          {resultado.linhas.length > 0 && <div className="px-1 pt-1 text-sm font-bold">Compras por investimento</div>}
 
           {dados.planejamento.categorias.map((c) => {
             const linhas = resultado.linhas.filter((l) => l.item.categoriaId === c.categoria.id)
@@ -187,12 +198,67 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
   )
 }
 
+/** Quanto do aporte vai para cada tipo de investimento — funciona sem nenhum ativo cadastrado. */
+function PorTipo({ resultado, dados }: { resultado: ResultadoSim; dados: DadosMinhaCarteira }) {
+  const sugeridos = resultado.linhas.filter((l) => l.item.sugerido)
+  const somaIdeal = resultado.porCategoria.reduce((s, c) => s + c.idealAporte, 0)
+  return (
+    <Cartao className="flex flex-col gap-3">
+      <div>
+        <div className="text-sm font-bold">Quanto colocar em cada tipo</div>
+        <div className="text-xs text-texto-2">
+          {resultado.modo === 'rebalanceamento'
+            ? 'Considera o que você já tem para aproximar cada tipo da meta.'
+            : 'Divide o aporte pelos percentuais de cada tipo.'}
+        </div>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-3 gap-y-2 text-[13px]">
+        <span className="text-[11px] text-texto-2">Tipo · meta</span>
+        <span className="text-right text-[11px] text-texto-2">Tem hoje</span>
+        <span className="text-right text-[11px] text-texto-2">Aportar</span>
+        {resultado.porCategoria.map((c) => {
+          const cat = dados.planejamento.categorias.find((x) => x.categoria.id === c.id)?.categoria
+          return (
+            <div key={c.id} className="contents">
+              <span className="flex min-w-0 flex-col">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: cat?.cor ?? 'var(--texto-2)' }} />
+                  <span className="truncate">{c.nome}</span>
+                </span>
+                <span className="pl-3.5 text-[11px] text-texto-2">
+                  meta {pctF(c.meta)} · depois {pctF(c.depois)}
+                  {!c.temInvestimentos && c.idealAporte > 0.004 && (
+                    <>
+                      {' · '}
+                      <Link to={`/ativos/novo?categoria=${c.id}&voltar=/minha-carteira`} className="font-bold text-positivo">escolher</Link>
+                    </>
+                  )}
+                </span>
+              </span>
+              <span className="text-right font-mono text-texto-2">{formatarBRL(c.valorAntes)}</span>
+              <span className={`text-right font-mono font-bold ${c.idealAporte > 0.004 ? '' : 'text-texto-2'}`}>{formatarBRL(c.idealAporte)}</span>
+            </div>
+          )
+        })}
+        <span className="border-t border-linha pt-2 text-[11px] font-bold">Total</span>
+        <span className="border-t border-linha pt-2 text-right font-mono text-texto-2">
+          {formatarBRL(resultado.porCategoria.reduce((s, c) => s + c.valorAntes, 0))}
+        </span>
+        <span className="border-t border-linha pt-2 text-right font-mono font-bold">{formatarBRL(somaIdeal)}</span>
+      </div>
+      {sugeridos.length > 0 && (
+        <div className="text-[11px] text-texto-2">
+          Contado pelo tipo, ainda sem categoria definida: {sugeridos.map((l) => l.item.rotulo).join(', ')}. Confirme em Planejamento.
+        </div>
+      )}
+    </Cartao>
+  )
+}
+
 function Avisos({ resultado }: { resultado: ResultadoSim }) {
   const avisos: string[] = []
   if (Math.abs(resultado.somaPercentuais - 100) >= 0.01)
     avisos.push(`As categorias somam ${formatarNumero(resultado.somaPercentuais)}%; o simulador ajustou proporcionalmente para 100%.`)
-  if (resultado.categoriasVazias.length)
-    avisos.push(`Sem investimentos cadastrados em: ${resultado.categoriasVazias.join(', ')}. O dinheiro dessas categorias fica na sobra.`)
   const semPreco = resultado.linhas.filter((l) => l.motivo === 'sem_preco').map((l) => l.item.rotulo)
   if (semPreco.length) avisos.push(`Sem preço para simular: ${semPreco.join(', ')}. Informe a cotação ou um preço de referência.`)
   if (!avisos.length) return null
