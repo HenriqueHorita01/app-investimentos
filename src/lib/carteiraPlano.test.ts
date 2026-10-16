@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATEGORIAS_PADRAO, dividirIgualmente, montarAtivoPlano, montarPlanejamento, paraSimulador } from './carteiraPlano'
+import { CATEGORIAS_PADRAO, dividirIgualmente, montarAtivoPlano, montarPlanejamento, paraSimulador, percentualNoPlano } from './carteiraPlano'
 import { calcularPosicao } from './calculos'
 import type { Ativo, CategoriaCarteira, Movimentacao } from './tipos'
 
@@ -138,5 +138,23 @@ describe('ativos sem categoria no simulador', () => {
     const { itens } = paraSimulador(p)
     expect(itens).toHaveLength(1)
     expect(itens[0]).toMatchObject({ id: 'itub', categoriaId: 'acoes', valorAtual: 498.3, sugerido: true })
+  })
+})
+
+describe('categoria com investimento pendente', () => {
+  it('o único investimento pendente recebe todo o % da categoria e a categoria fecha', () => {
+    const cats = [categoria('acoes', 10, 0), categoria('cdb', 90, 1)]
+    const itub = ativo({ id: 'itub', ticker: 'ITUB4', tipo: 'acao', categoria_id: 'acoes', percentual_alvo: null })
+    const p = montarPlanejamento(cats, [
+      { ativo: itub, valorLivre: 498.3, investidoLivre: 424.3, quantidadeLivre: 10, preco: 49.83, fontePreco: 'cotacao', dataPreco: null, dataAquisicao: null, pendente: true },
+    ])
+    const acoes = p.categorias.find((c) => c.categoria.id === 'acoes')!
+    expect(acoes.automaticoPorPendente).toBe(10)
+    expect(acoes.fechada).toBe(true)
+    expect(percentualNoPlano(acoes, acoes.ativos[0])).toBe(10)
+    // Hoje 100% da carteira está em Ações (é o único investimento).
+    expect(p.valorCarteira).toBeCloseTo(498.3)
+    expect(acoes.atual).toBeCloseTo(1)
+    expect(p.categorias.find((c) => c.categoria.id === 'cdb')!.atual).toBe(0)
   })
 })
