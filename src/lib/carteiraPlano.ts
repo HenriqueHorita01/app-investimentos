@@ -1,7 +1,7 @@
 // Minha Carteira — regras do planejamento (funções puras, sem acesso ao banco).
 // Ver docs/plano-minha-carteira.md.
 import { LIVRE, type Posicao } from './calculos'
-import type { Ativo, CategoriaCarteira, Cotacao, Movimentacao } from './tipos'
+import type { Ativo, CategoriaCarteira, Cotacao, Movimentacao, TipoAtivo } from './tipos'
 import { ehRendaVariavel } from './tipos'
 import type { CategoriaSim, ItemSim } from './carteiraSimulador'
 
@@ -116,25 +116,49 @@ export function dividirIgualmente(percentualCategoria: number, quantidade: numbe
   return partes
 }
 
-/** Converte o planejamento para o formato do simulador / prioridades. */
+/** Tipo de ativo que o nome da categoria sugere (ex.: "Fundos imobiliários (FIIs)" → FII). */
+export function tipoDaCategoria(nomeCategoria: string | undefined): TipoAtivo | null {
+  const n = (nomeCategoria ?? '').toLowerCase()
+  if (n.includes('fii') || n.includes('imobili')) return 'fii'
+  if (n.includes('etf')) return 'etf'
+  if (n.includes('aç') || n.includes('acao') || n.includes('acoes')) return 'acao'
+  if (n.includes('lci') || n.includes('lca')) return 'lci_lca'
+  if (n.includes('tesouro')) return 'tesouro'
+  if (n.includes('cdb')) return 'cdb'
+  return null
+}
+
+/** Categoria em que um ativo sem categoria provavelmente se encaixa (pelo tipo dele). */
+export function categoriaSugerida(tipo: TipoAtivo, categorias: CategoriaCarteira[]): CategoriaCarteira | null {
+  return categorias.find((c) => tipoDaCategoria(c.nome) === tipo) ?? null
+}
+
+/**
+ * Converte o planejamento para o formato do simulador / prioridades.
+ * Investimentos livres ainda sem categoria (ex.: ITUB4) entram na categoria do tipo
+ * deles, marcados como `sugerido`, para o valor que você já tem contar no rebalanceamento.
+ */
 export function paraSimulador(p: Planejamento): { categorias: CategoriaSim[]; itens: ItemSim[] } {
+  const comoItem = (a: AtivoPlano, categoriaId: string, sugerido: boolean): ItemSim => ({
+    id: a.ativo.id,
+    rotulo: a.ativo.ticker || a.ativo.nome,
+    categoriaId,
+    percentualAlvo: sugerido ? null : a.ativo.percentual_alvo,
+    valorAtual: a.valorLivre,
+    rendaVariavel: ehRendaVariavel(a.ativo.tipo),
+    preco: ehRendaVariavel(a.ativo.tipo) ? a.preco : null,
+    lote: a.ativo.lote || 1,
+    aplicacaoMinima: a.ativo.aplicacao_minima,
+    incrementoMinimo: a.ativo.incremento_minimo,
+    sugerido,
+  })
+  const cats = p.categorias.map((c) => c.categoria)
+  const sugeridos = p.foraDaCarteira.flatMap((a) => {
+    const c = categoriaSugerida(a.ativo.tipo, cats)
+    return c ? [comoItem(a, c.id, true)] : []
+  })
   return {
     categorias: p.categorias.map((c) => ({ id: c.categoria.id, nome: c.categoria.nome, percentual: c.categoria.percentual })),
-    itens: p.categorias.flatMap((c) =>
-      c.ativos.map(
-        (a): ItemSim => ({
-          id: a.ativo.id,
-          rotulo: a.ativo.ticker || a.ativo.nome,
-          categoriaId: c.categoria.id,
-          percentualAlvo: a.ativo.percentual_alvo,
-          valorAtual: a.valorLivre,
-          rendaVariavel: ehRendaVariavel(a.ativo.tipo),
-          preco: ehRendaVariavel(a.ativo.tipo) ? a.preco : null,
-          lote: a.ativo.lote || 1,
-          aplicacaoMinima: a.ativo.aplicacao_minima,
-          incrementoMinimo: a.ativo.incremento_minimo,
-        }),
-      ),
-    ),
+    itens: [...p.categorias.flatMap((c) => c.ativos.map((a) => comoItem(a, c.categoria.id, false))), ...sugeridos],
   }
 }

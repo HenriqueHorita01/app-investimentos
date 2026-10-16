@@ -1,22 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCategorias, criarAtivo } from '../lib/dados'
+import { tipoDaCategoria } from '../lib/carteiraPlano'
 import { lerNumero } from '../lib/formato'
 import { ehRendaVariavel, INDEXADORES, NOME_TIPO, TIPOS_MVP, type Indexador, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Titulo } from '../components/ui'
-
-/** Tipo de ativo sugerido pelo nome da categoria (ex.: "Fundos imobiliários (FIIs)" → FII). */
-function tipoSugerido(nomeCategoria: string | undefined): TipoAtivo | null {
-  const n = (nomeCategoria ?? '').toLowerCase()
-  if (n.includes('fii') || n.includes('imobili')) return 'fii'
-  if (n.includes('etf')) return 'etf'
-  if (n.includes('aç') || n.includes('acao') || n.includes('acoes')) return 'acao'
-  if (n.includes('lci') || n.includes('lca')) return 'lci_lca'
-  if (n.includes('tesouro')) return 'tesouro'
-  if (n.includes('cdb')) return 'cdb'
-  return null
-}
 
 export default function NovoAtivo() {
   const navegar = useNavigate()
@@ -28,7 +17,7 @@ export default function NovoAtivo() {
 
   const [reserva, setReserva] = useState(params.get('reserva') === '1')
   const [tipoEscolhido, setTipo] = useState<TipoAtivo | null>(reserva ? 'cdb' : null)
-  const tipo: TipoAtivo = tipoEscolhido ?? tipoSugerido(categoria?.nome) ?? 'fii'
+  const tipo: TipoAtivo = tipoEscolhido ?? tipoDaCategoria(categoria?.nome) ?? 'fii'
   const [indexadorEscolhido, setIndexador] = useState<Indexador | null>(null)
   const indexador: Indexador = indexadorEscolhido ?? (tipo === 'tesouro' ? (categoria?.nome.toLowerCase().includes('selic') ? 'selic' : 'ipca') : 'cdi')
   const [ticker, setTicker] = useState('')

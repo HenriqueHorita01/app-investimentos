@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATEGORIAS_PADRAO, dividirIgualmente, montarAtivoPlano, montarPlanejamento } from './carteiraPlano'
+import { CATEGORIAS_PADRAO, dividirIgualmente, montarAtivoPlano, montarPlanejamento, paraSimulador } from './carteiraPlano'
 import { calcularPosicao } from './calculos'
 import type { Ativo, CategoriaCarteira, Movimentacao } from './tipos'
 
@@ -123,5 +123,20 @@ describe('planejamento', () => {
     const tres = dividirIgualmente(10, 3)
     expect(tres).toEqual([3.333, 3.333, 3.334])
     expect(tres.reduce((s, x) => s + x, 0)).toBeCloseTo(10, 9)
+  })
+})
+
+describe('ativos sem categoria no simulador', () => {
+  it('ITUB4 sem categoria conta em "Ações brasileiras" pelo tipo', () => {
+    const cats = [categoria('cdb', 20, 0), categoria('acoes', 10, 1)]
+    cats[0].nome = 'CDB pós-fixado'
+    cats[1].nome = 'Ações brasileiras'
+    const itub = ativo({ id: 'itub', ticker: 'ITUB4', tipo: 'acao' })
+    const p = montarPlanejamento(cats, [
+      { ativo: itub, valorLivre: 498.3, investidoLivre: 424, quantidadeLivre: 10, preco: 49.83, fontePreco: 'cotacao', dataPreco: null, dataAquisicao: null, pendente: true },
+    ])
+    const { itens } = paraSimulador(p)
+    expect(itens).toHaveLength(1)
+    expect(itens[0]).toMatchObject({ id: 'itub', categoriaId: 'acoes', valorAtual: 498.3, sugerido: true })
   })
 })
