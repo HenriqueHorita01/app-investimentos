@@ -7,7 +7,7 @@ import {
   excluirCategoria,
   salvarPercentuais,
 } from '../../lib/dados'
-import { dividirIgualmente, TOLERANCIA_PCT, type AtivoPlano, type CategoriaPlano } from '../../lib/carteiraPlano'
+import { dividirIgualmente, percentualNoPlano, TOLERANCIA_PCT, type AtivoPlano, type CategoriaPlano } from '../../lib/carteiraPlano'
 import { formatarBRL, formatarData, formatarNumero, lerNumero } from '../../lib/formato'
 import { CORES_OBJETIVO } from '../../lib/objetivos'
 import { descreverTaxa, ehRendaVariavel, NOME_TIPO, rotuloAtivo, type CategoriaCarteira } from '../../lib/tipos'
@@ -20,9 +20,9 @@ const br = (v: number | null | undefined) => (v == null ? '' : String(v).replace
 
 export function Planejamento({ dados, aoMudar }: { dados: DadosMinhaCarteira; aoMudar: () => void }) {
   const { planejamento } = dados
-  const valorCarteira = planejamento.categorias.reduce((s, c) => s + c.ativos.reduce((t, a) => t + a.valorLivre, 0), 0)
-  const pendentes = planejamento.categorias.reduce((s, c) => s + c.pendentes, 0)
-  const desequilibradas = planejamento.categorias.filter((c) => c.ativos.length > 0 && Math.abs(c.faltaDistribuir) >= TOLERANCIA_PCT)
+  const valorCarteira = planejamento.valorCarteira
+  const automaticos = planejamento.categorias.reduce((s, c) => s + c.pendentes, 0)
+  const desequilibradas = planejamento.categorias.filter((c) => c.ativos.length > 0 && !c.fechada)
 
   return (
     <>
@@ -33,9 +33,33 @@ export function Planejamento({ dados, aoMudar }: { dados: DadosMinhaCarteira; ao
             {planejamento.categoriasOk ? '100% ✓' : `Soma ${pct(planejamento.somaCategorias)}`}
           </div>
         </div>
-        <div className="flex h-3 overflow-hidden rounded-full bg-linha" role="img" aria-label="Distribuição planejada por categoria">
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[11px] text-texto-2">Meta</div>
+          <div className="flex h-3 overflow-hidden rounded-full bg-linha" role="img" aria-label="Distribuição planejada por categoria">
+            {planejamento.categorias.map((c) => (
+              <div key={c.categoria.id} style={{ width: `${Math.min(100, c.categoria.percentual)}%`, background: c.categoria.cor ?? 'var(--texto-2)' }} />
+            ))}
+          </div>
+          <div className="text-[11px] text-texto-2">Hoje {valorCarteira > 0.005 ? '' : '(carteira ainda vazia)'}</div>
+          <div className="flex h-3 overflow-hidden rounded-full bg-linha" role="img" aria-label="Distribuição atual por categoria">
+            {planejamento.categorias.map((c) => (
+              <div key={c.categoria.id} style={{ width: `${c.atual * 100}%`, background: c.categoria.cor ?? 'var(--texto-2)' }} />
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1 text-xs">
+          <span className="text-[11px] text-texto-2">Categoria</span>
+          <span className="text-right text-[11px] text-texto-2">Meta</span>
+          <span className="text-right text-[11px] text-texto-2">Hoje</span>
           {planejamento.categorias.map((c) => (
-            <div key={c.categoria.id} style={{ width: `${Math.min(100, c.categoria.percentual)}%`, background: c.categoria.cor ?? 'var(--texto-2)' }} />
+            <div key={c.categoria.id} className="contents">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.categoria.cor ?? 'var(--texto-2)' }} />
+                <span className="truncate">{c.categoria.nome}</span>
+              </span>
+              <span className="text-right font-mono text-texto-2">{pct(c.categoria.percentual)}</span>
+              <span className="text-right font-mono font-bold">{pct(Math.round(c.atual * 1000) / 10)}</span>
+            </div>
           ))}
         </div>
         {!planejamento.categoriasOk && (
@@ -53,13 +77,10 @@ export function Planejamento({ dados, aoMudar }: { dados: DadosMinhaCarteira; ao
           </div>
           <div>
             <div className="text-xs text-texto-2">Pendências</div>
-            <div className={pendentes || desequilibradas.length ? 'text-reservado-texto' : 'text-positivo'}>
-              {pendentes || desequilibradas.length
-                ? [pendentes ? `${pendentes} sem %` : null, desequilibradas.length ? `${desequilibradas.length} categoria(s) sem fechar` : null]
-                    .filter(Boolean)
-                    .join(' · ')
-                : 'Tudo configurado'}
+            <div className={desequilibradas.length ? 'text-reservado-texto' : 'text-positivo'}>
+              {desequilibradas.length ? `${desequilibradas.length} categoria(s) sem fechar` : 'Tudo configurado'}
             </div>
+            {automaticos > 0 && <div className="text-[11px] text-texto-2">{automaticos} com % automático</div>}
           </div>
         </div>
         <div className="text-xs text-texto-2">
@@ -283,7 +304,6 @@ function CartaoCategoria({ c, dados, aoMudar }: { c: CategoriaPlano; dados: Dado
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const cat = c.categoria
-  const fechou = Math.abs(c.faltaDistribuir) < TOLERANCIA_PCT
   // Ativos que podem entrar: qualquer um que ainda não está em categoria.
   const semCategoria = dados.ativosPlano.filter((a) => a.ativo.categoria_id == null)
 
@@ -304,21 +324,36 @@ function CartaoCategoria({ c, dados, aoMudar }: { c: CategoriaPlano; dados: Dado
           <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: cat.cor ?? 'var(--texto-2)' }} />
           <span className="truncate text-[15px] font-bold">{cat.nome}</span>
         </div>
-        <span className="shrink-0 font-mono text-[15px]">{pct(cat.percentual)}</span>
+        <span className="shrink-0 text-right">
+          <span className="block font-mono text-[15px]">meta {pct(cat.percentual)}</span>
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <div className="relative h-2.5 rounded-full bg-linha" role="img" aria-label={`Hoje ${pct(Math.round(c.atual * 1000) / 10)} da carteira; meta ${pct(cat.percentual)}`}>
+          <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.min(100, c.atual * 100)}%`, background: cat.cor ?? 'var(--texto-2)' }} />
+          <div className="absolute -inset-y-1 w-0.5 bg-texto" style={{ left: `${Math.min(100, cat.percentual)}%` }} aria-hidden="true" />
+        </div>
+        <div className="flex justify-between text-xs">
+          <span>
+            Hoje <b>{pct(Math.round(c.atual * 1000) / 10)}</b> da carteira
+            <span className="text-texto-2"> · {formatarBRL(c.valorAtual)}</span>
+          </span>
+          <span className={c.atual * 100 > cat.percentual + 0.5 ? 'text-reservado-texto' : c.atual * 100 < cat.percentual - 0.5 ? 'text-texto-2' : 'text-positivo'}>
+            {c.atual * 100 > cat.percentual + 0.5 ? 'acima da meta' : c.atual * 100 < cat.percentual - 0.5 ? 'abaixo da meta' : 'na meta'}
+          </span>
+        </div>
       </div>
 
       {c.ativos.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <div className="flex h-2 overflow-hidden rounded-full bg-linha">
-            <div className="h-full" style={{ width: `${cat.percentual > 0 ? Math.min(100, (c.somaAtivos / cat.percentual) * 100) : 0}%`, background: cat.cor ?? 'var(--texto-2)' }} />
-          </div>
-          <div className={`text-xs ${fechou ? 'text-positivo' : 'text-reservado-texto'}`}>
-            {fechou
-              ? 'Percentuais dos investimentos fecham a categoria ✓'
-              : c.faltaDistribuir > 0
-                ? `Distribuído ${pct(c.somaAtivos)} de ${pct(cat.percentual)} · faltam ${pct(c.faltaDistribuir)}`
-                : `Distribuído ${pct(c.somaAtivos)} · passou ${pct(-c.faltaDistribuir)} da categoria`}
-          </div>
+        <div className={`text-xs ${c.fechada ? 'text-positivo' : 'text-reservado-texto'}`}>
+          {c.fechada
+            ? c.pendentes > 0
+              ? `Plano fecha ✓ · ${c.pendentes === 1 ? 'o pendente recebe' : `${c.pendentes} pendentes recebem`} ${pct(Math.round(c.automaticoPorPendente * 1000) / 1000)} automaticamente`
+              : 'Plano dos investimentos fecha a categoria ✓'
+            : c.faltaDistribuir > 0
+              ? `Plano: distribuído ${pct(c.somaAtivos)} de ${pct(cat.percentual)} · faltam ${pct(c.faltaDistribuir)}`
+              : `Plano: distribuído ${pct(c.somaAtivos)} · passou ${pct(-c.faltaDistribuir)} da categoria`}
         </div>
       )}
 
@@ -338,7 +373,7 @@ function CartaoCategoria({ c, dados, aoMudar }: { c: CategoriaPlano; dados: Dado
             }}
           />
         ) : (
-          <LinhaAtivoPlano key={a.ativo.id} a={a} categoria={cat} aoEditar={() => setEditandoId(a.ativo.id)} />
+          <LinhaAtivoPlano key={a.ativo.id} a={a} c={c} aoEditar={() => setEditandoId(a.ativo.id)} />
         ),
       )}
 
@@ -391,10 +426,12 @@ function CartaoCategoria({ c, dados, aoMudar }: { c: CategoriaPlano; dados: Dado
   )
 }
 
-function LinhaAtivoPlano({ a, categoria, aoEditar }: { a: AtivoPlano; categoria: CategoriaCarteira; aoEditar: () => void }) {
+function LinhaAtivoPlano({ a, c, aoEditar }: { a: AtivoPlano; c: CategoriaPlano; aoEditar: () => void }) {
   const at = a.ativo
   const rv = ehRendaVariavel(at.tipo)
-  const dentroCategoria = at.percentual_alvo != null && categoria.percentual > 0 ? (at.percentual_alvo / categoria.percentual) * 100 : null
+  const categoria = c.categoria
+  const noPlano = percentualNoPlano(c, a)
+  const dentroCategoria = categoria.percentual > 0 ? (noPlano / categoria.percentual) * 100 : null
   const detalhes = rv
     ? [NOME_TIPO[at.tipo], at.instituicao, at.lote > 1 ? `lote ${at.lote}` : null]
     : [
@@ -413,14 +450,9 @@ function LinhaAtivoPlano({ a, categoria, aoEditar }: { a: AtivoPlano; categoria:
           <div className="text-xs text-texto-2">{detalhes.filter(Boolean).join(' · ')}</div>
         </div>
         <div className="shrink-0 text-right">
-          {a.pendente ? (
-            <span className="rounded bg-reservado/15 px-1.5 py-0.5 text-xs font-bold text-reservado-texto">% pendente</span>
-          ) : (
-            <>
-              <div className="font-mono text-sm">{pct(at.percentual_alvo!)}</div>
-              {dentroCategoria != null && <div className="text-[11px] text-texto-2">{pct(Math.round(dentroCategoria * 10) / 10)} da categoria</div>}
-            </>
-          )}
+          <div className="font-mono text-sm">{pct(Math.round(noPlano * 1000) / 1000)}</div>
+          {a.pendente && <div className="text-[11px] font-bold text-reservado-texto">automático</div>}
+          {dentroCategoria != null && <div className="text-[11px] text-texto-2">{pct(Math.round(dentroCategoria * 10) / 10)} da categoria</div>}
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 text-xs">
