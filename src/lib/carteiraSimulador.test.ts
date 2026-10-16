@@ -138,3 +138,33 @@ describe('prioridade de compra', () => {
     expect(q.compravel).toBe(false)
   })
 })
+
+describe('simulação por tipo (sem investimentos específicos)', () => {
+  // Alternativa B e só o ITUB4 (R$ 500) em Ações; aporte de R$ 1.000.
+  const categorias = [cat('cdb', 20), cat('lci', 20), cat('tesouro', 20), cat('fii', 20), cat('acoes', 10), cat('etf', 10)]
+  const itens = [rv('ITUB4', 'acoes', 49.83, null, 500)]
+
+  it('rebalanceamento: quanto vai para cada tipo, e Ações (acima da meta) recebe zero', () => {
+    const r = simularAporte(categorias, itens, 1000, 'rebalanceamento')
+    const ideal = (id: string) => r.porCategoria.find((c) => c.id === id)!.idealAporte
+    for (const id of ['cdb', 'lci', 'tesouro', 'fii']) expect(ideal(id)).toBeCloseTo((1000 * 300) / 1350, 2)
+    expect(ideal('etf')).toBeCloseTo((1000 * 150) / 1350, 2)
+    expect(ideal('acoes')).toBe(0)
+    // Tipos sem investimento escolhido ficam "a definir"; nada é gasto à força.
+    expect(r.aDefinir).toBeCloseTo(1000, 1)
+    expect(r.totalEfetivo).toBe(0)
+    expect(r.sobra).toBeCloseTo(0, 1)
+    expect(r.porCategoria.find((c) => c.id === 'acoes')!.depois).toBeCloseTo(500 / 1500, 3)
+  })
+
+  it('proporcional: 20/20/20/20/10/10 do aporte, e o ITUB4 recebe a parte de Ações', () => {
+    const r = simularAporte(categorias, itens, 1000, 'proporcional')
+    expect(r.porCategoria.find((c) => c.id === 'cdb')!.idealAporte).toBeCloseTo(200)
+    expect(r.porCategoria.find((c) => c.id === 'etf')!.idealAporte).toBeCloseTo(100)
+    const itub = r.linhas.find((l) => l.item.id === 'ITUB4')!
+    expect(itub.ideal).toBeCloseTo(100)
+    expect(itub.quantidade).toBe(2)
+    expect(r.aDefinir).toBeCloseTo(900)
+    expect(r.totalEfetivo + r.aDefinir + r.sobra).toBeCloseTo(1000)
+  })
+})

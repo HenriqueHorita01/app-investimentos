@@ -19,6 +19,8 @@ export interface ItemSim {
   /** Renda fixa: valor mínimo da aplicação e incremento depois dele. */
   aplicacaoMinima: number | null
   incrementoMinimo: number | null
+  /** Ativo sem categoria contado na categoria do tipo dele (ex.: ITUB4 em Ações). */
+  sugerido?: boolean
 }
 
 export interface CategoriaSim {
@@ -55,8 +57,11 @@ export interface DistribuicaoCat {
   depois: number
   valorAntes: number
   valorDepois: number
+  /** Quanto do aporte vai para este tipo (sempre calculado, mesmo sem investimentos). */
   idealAporte: number
   efetivoAporte: number
+  /** Tem investimentos cadastrados? Se não, o ideal fica "a definir". */
+  temInvestimentos: boolean
 }
 
 export interface ResultadoSim {
@@ -64,6 +69,8 @@ export interface ResultadoSim {
   orcamento: number
   linhas: LinhaSim[]
   totalEfetivo: number
+  /** Ideal de tipos que ainda não têm investimento escolhido (você decide onde aplicar). */
+  aDefinir: number
   /** Não investido: fica no saldo para os próximos aportes. */
   sobra: number
   porCategoria: DistribuicaoCat[]
@@ -126,31 +133,79 @@ function proximoPasso(item: ItemSim, efetivoAtual: number): number | null {
 }
 
 /**
- * Simula um aporte.
- * - Proporcional: cada ativo recebe orçamento × % (ignora desequilíbrios).
- * - Rebalanceamento: metas sobre (carteira + orçamento); o dinheiro vai primeiro para os
- *   maiores déficits; nunca sugere vender.
+ * Quanto do aporte vai para cada tipo (categoria), sem depender de investimentos.
+ * - Proporcional: orçamento × % do tipo.
+ * - Rebalanceamento: metas sobre (carteira + orçamento); o dinheiro vai primeiro para o
+ *   que está abaixo da meta, na proporção do que falta; nunca sugere vender.
+ */
+export function idealPorCategoria(
+  categorias: CategoriaSim[],
+  valorAtual: Map<string, number>,
+  orcamento: number,
+  modo: ModoSim,
+): Map<string, number> {
+  const somaPct = categorias.reduce((s, c) => s + c.percentual, 0)
+  const peso = (c: CategoriaSim) => (somaPct > 0 ? c.percentual / somaPct : 0)
+  const ideal = new Map<string, number>()
+  if (modo === 'proporcional') {
+    for (const c of categorias) ideal.set(c.id, orcamento * peso(c))
+    return ideal
+  }
+  const total = categorias.reduce((s, c) => s + (valorAtual.get(c.id) ?? 0), 0) + orcamento
+  return dividirPorDeficit(
+    categorias.map((c) => ({ id: c.id, peso: peso(c), valor: valorAtual.get(c.id) ?? 0 })),
+    total,
+    orcamento,
+  )
+}
+
+/** Divide `orcamento` pelos déficits em relação a `total × peso`; o que sobrar vai pelos pesos. */
+function dividirPorDeficit(grupos: { id: string; peso: number; valor: number }[], total: number, orcamento: number): Map<string, number> {
+  const deficits = grupos.map((g) => ({ ...g, d: Math.max(0, total * g.peso - g.valor) }))
+  const somaDef = deficits.reduce((s, g) => s + g.d, 0)
+  const somaPeso = grupos.reduce((s, g) => s + g.peso, 0) || 1
+  return new Map(
+    deficits.map((g) => [
+      g.id,
+      somaDef >= orcamento ? (somaDef > 0 ? (orcamento * g.d) / somaDef : 0) : g.d + ((orcamento - somaDef) * g.peso) / somaPeso,
+    ]),
+  )
+}
+
+/**
+ * Simula um aporte em dois níveis:
+ * 1. por tipo (categoria) — sempre, mesmo sem investimentos cadastrados;
+ * 2. dentro de cada tipo, pelos investimentos cadastrados (pelos % deles).
  * Depois converte em compras possíveis (inteiras/mínimos) e usa a sobra, por prioridade,
- * enquanto couber mais uma unidade. O que não couber fica como sobra (saldo a investir).
+ * enquanto couber mais uma unidade. Tipos sem investimento ficam "a definir"; o que não
+ * couber em compras fica como sobra (saldo a investir).
  */
 export function simularAporte(categorias: CategoriaSim[], itens: ItemSim[], orcamento: number, modo: ModoSim): ResultadoSim {
   const pesos = pesosEfetivos(categorias, itens)
-  const elegiveis = itens.filter((i) => (pesos.get(i.id) ?? 0) > 0)
-  const carteira = itens.reduce((s, i) => s + i.valorAtual, 0)
-  const total = carteira + orcamento
+  const valorCat = new Map(categorias.map((c) => [c.id, itens.filter((i) => i.categoriaId === c.id).reduce((s, i) => s + i.valorAtual, 0)]))
+  const idealCat = idealPorCategoria(categorias, valorCat, orcamento, modo)
 
-  // 1) Valor ideal por ativo.
+  // 1) Ideal de cada investimento: o ideal do tipo dividido entre os investimentos dele.
   const ideal = new Map<string, number>()
-  if (modo === 'proporcional') {
-    for (const i of elegiveis) ideal.set(i.id, (orcamento * (pesos.get(i.id) ?? 0)) / 100)
-  } else {
-    const deficits = new Map(elegiveis.map((i) => [i.id, Math.max(0, (total * (pesos.get(i.id) ?? 0)) / 100 - i.valorAtual)]))
-    const somaDef = [...deficits.values()].reduce((s, d) => s + d, 0)
-    for (const i of elegiveis) {
-      const d = deficits.get(i.id) ?? 0
-      ideal.set(i.id, somaDef >= orcamento ? (somaDef > 0 ? (orcamento * d) / somaDef : 0) : d + ((orcamento - somaDef) * (pesos.get(i.id) ?? 0)) / 100)
+  for (const c of categorias) {
+    const daCat = itens.filter((i) => i.categoriaId === c.id)
+    if (!daCat.length) continue
+    const somaPesos = daCat.reduce((s, i) => s + (pesos.get(i.id) ?? 0), 0)
+    const share = (i: ItemSim) => (somaPesos > 0 ? (pesos.get(i.id) ?? 0) / somaPesos : 1 / daCat.length)
+    const v = idealCat.get(c.id) ?? 0
+    if (modo === 'proporcional') {
+      for (const i of daCat) ideal.set(i.id, v * share(i))
+    } else {
+      const totalCat = (valorCat.get(c.id) ?? 0) + v
+      const porItem = dividirPorDeficit(
+        daCat.map((i) => ({ id: i.id, peso: share(i), valor: i.valorAtual })),
+        totalCat,
+        v,
+      )
+      for (const [id, x] of porItem) ideal.set(id, x)
     }
   }
+  const elegiveis = itens.filter((i) => ideal.has(i.id) && ((pesos.get(i.id) ?? 0) > 0 || (ideal.get(i.id) ?? 0) > 0))
 
   // 2) Compras possíveis com o ideal de cada um.
   const linhas: LinhaSim[] = elegiveis.map((item) => {
@@ -159,14 +214,16 @@ export function simularAporte(categorias: CategoriaSim[], itens: ItemSim[], orca
     return { item, percentual: pesos.get(item.id) ?? 0, ideal: v, quantidade: c.quantidade, efetivo: c.efetivo, diferenca: v - c.efetivo, motivo: c.motivo }
   })
 
-  // 3) Usa a sobra: mais uma unidade para quem está mais longe do ideal/meta, se couber.
-  let restante = c2(orcamento - linhas.reduce((s, l) => s + l.efetivo, 0))
-  const meta = (l: LinhaSim) => (modo === 'proporcional' ? l.ideal : (total * l.percentual) / 100 - l.item.valorAtual)
+  // Tipos sem investimento: o ideal fica "a definir" e não entra nas compras.
+  const aDefinir = c2(categorias.filter((c) => !itens.some((i) => i.categoriaId === c.id)).reduce((s, c) => s + (idealCat.get(c.id) ?? 0), 0))
+
+  // 3) Usa a sobra: mais uma unidade para quem está mais longe do ideal, se couber.
+  let restante = c2(orcamento - aDefinir - linhas.reduce((s, l) => s + l.efetivo, 0))
   for (let guarda = 0; guarda < 10000 && restante > 0.004; guarda++) {
     const candidatos = linhas
-      .map((l) => ({ l, passo: proximoPasso(l.item, l.efetivo), falta: meta(l) - l.efetivo }))
+      .map((l) => ({ l, passo: proximoPasso(l.item, l.efetivo), falta: l.ideal - l.efetivo }))
       .filter((x) => x.passo != null && x.passo <= restante + 1e-9 && x.falta > 0.004)
-      .sort((a, b) => b.falta / Math.max(1, meta(b.l)) - a.falta / Math.max(1, meta(a.l)) || b.falta - a.falta)
+      .sort((a, b) => b.falta / Math.max(1, b.l.ideal) - a.falta / Math.max(1, a.l.ideal) || b.falta - a.falta)
     const escolhido = candidatos[0]
     if (!escolhido) break
     const { l, passo } = escolhido
@@ -183,8 +240,9 @@ export function simularAporte(categorias: CategoriaSim[], itens: ItemSim[], orca
     orcamento,
     linhas,
     totalEfetivo,
-    sobra: c2(orcamento - totalEfetivo),
-    porCategoria: distribuirPorCategoria(categorias, itens, linhas),
+    aDefinir,
+    sobra: c2(orcamento - totalEfetivo - aDefinir),
+    porCategoria: distribuirPorCategoria(categorias, itens, linhas, idealCat),
     categoriasVazias: categorias.filter((c) => c.percentual > 0 && !itens.some((i) => i.categoriaId === c.id)).map((c) => c.nome),
     somaPercentuais: categorias.reduce((s, c) => s + c.percentual, 0),
   }
@@ -193,28 +251,44 @@ export function simularAporte(categorias: CategoriaSim[], itens: ItemSim[], orca
 /** Recalcula totais e distribuição depois de ajustes manuais nas linhas. */
 export function recalcular(base: ResultadoSim, categorias: CategoriaSim[], itens: ItemSim[], linhas: LinhaSim[]): ResultadoSim {
   const totalEfetivo = c2(linhas.reduce((s, l) => s + l.efetivo, 0))
-  return { ...base, linhas, totalEfetivo, sobra: c2(base.orcamento - totalEfetivo), porCategoria: distribuirPorCategoria(categorias, itens, linhas) }
+  const idealCat = new Map(base.porCategoria.map((c) => [c.id, c.idealAporte]))
+  return {
+    ...base,
+    linhas,
+    totalEfetivo,
+    sobra: c2(base.orcamento - totalEfetivo - base.aDefinir),
+    porCategoria: distribuirPorCategoria(categorias, itens, linhas, idealCat),
+  }
 }
 
-function distribuirPorCategoria(categorias: CategoriaSim[], itens: ItemSim[], linhas: LinhaSim[]): DistribuicaoCat[] {
+/**
+ * Distribuição por tipo antes e depois. Tipos sem investimento contam o ideal como se
+ * fosse aplicado (é o plano), para o "depois" mostrar a carteira rebalanceada.
+ */
+function distribuirPorCategoria(categorias: CategoriaSim[], itens: ItemSim[], linhas: LinhaSim[], idealCat: Map<string, number>): DistribuicaoCat[] {
   const antesTotal = itens.reduce((s, i) => s + i.valorAtual, 0)
-  const compras = linhas.reduce((s, l) => s + l.efetivo, 0)
   const somaPct = categorias.reduce((s, c) => s + c.percentual, 0) || 1
+  const aplicado = (c: CategoriaSim) =>
+    itens.some((i) => i.categoriaId === c.id)
+      ? linhas.filter((l) => l.item.categoriaId === c.id).reduce((s, l) => s + l.efetivo, 0)
+      : (idealCat.get(c.id) ?? 0)
+  const depoisTotal = antesTotal + categorias.reduce((s, c) => s + aplicado(c), 0)
   return categorias.map((c) => {
     const valorAntes = itens.filter((i) => i.categoriaId === c.id).reduce((s, i) => s + i.valorAtual, 0)
-    const daCat = linhas.filter((l) => l.item.categoriaId === c.id)
-    const efetivoAporte = daCat.reduce((s, l) => s + l.efetivo, 0)
-    const valorDepois = valorAntes + efetivoAporte
+    const temInvestimentos = itens.some((i) => i.categoriaId === c.id)
+    const efetivoAporte = temInvestimentos ? aplicado(c) : 0
+    const valorDepois = valorAntes + aplicado(c)
     return {
       id: c.id,
       nome: c.nome,
       meta: c.percentual / somaPct,
       antes: antesTotal > 0 ? valorAntes / antesTotal : 0,
-      depois: antesTotal + compras > 0 ? valorDepois / (antesTotal + compras) : 0,
+      depois: depoisTotal > 0 ? valorDepois / depoisTotal : 0,
       valorAntes,
       valorDepois,
-      idealAporte: daCat.reduce((s, l) => s + l.ideal, 0),
+      idealAporte: idealCat.get(c.id) ?? 0,
       efetivoAporte,
+      temInvestimentos,
     }
   })
 }
