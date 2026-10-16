@@ -16,6 +16,14 @@ Um ativo pode servir vários objetivos. O que não está alocado é **livre**.
 - **Reserva de emergência** é um destino especial (objetivo do tipo `reserva_emergencia`, um por usuário): qualquer parte de um investimento pode ir para ela. Fica fora do patrimônio e tem aba própria para acompanhar saldo, meta e rendimento.
 - Um investimento pode ser dividido entre vários destinos: ex. 1.000 = 200 objetivo A + 300 objetivo B + 500 reserva (ou livre). A Carteira mostra essa divisão em barra e %.
 
+### Glossário (padrão em todas as telas)
+
+- **Patrimônio livre**: o excedente gerado pelos investimentos (rendimentos da renda fixa + dividendos). Aparece no Início.
+- **Investido**: parte de um investimento que não está na Reserva nem em objetivos — o dinheiro de longo prazo. É a base da aba Minha Carteira.
+- **Reserva**: parte destinada à reserva de emergência (cor azul-celeste).
+- **Objetivo**: parte separada para um gasto futuro (cor do objetivo).
+- Aba **Ativos** (antiga "Carteira"): lista de investimentos e para onde vai o dinheiro de cada um.
+
 ## 2. Stack
 
 | Camada | Escolha |

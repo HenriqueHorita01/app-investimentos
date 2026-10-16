@@ -74,7 +74,7 @@ export function Prioridades({ dados }: { dados: DadosMinhaCarteira }) {
     <>
       <Cartao className="flex flex-col gap-2.5">
         <div className="flex items-baseline justify-between">
-          <div className="text-sm font-bold">Carteira (parte livre)</div>
+          <div className="text-sm font-bold">Carteira (parte Investido)</div>
           <div className="font-mono text-sm">{formatarBRL(total)}</div>
         </div>
         <label htmlFor="pri-aporte" className="rotulo">Considerar um aporte de (opcional)</label>

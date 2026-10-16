@@ -3,7 +3,7 @@ import { formatarBRL, formatarPercentual } from '../lib/formato'
 
 const pct = (f: number) => formatarPercentual(f, false)
 
-/** Barra empilhada com a divisão de um valor entre destinos (livre, reserva, objetivos). */
+/** Barra empilhada com a divisão de um valor entre destinos (investido, reserva, objetivos). */
 export function BarraDestinos({ partes, altura = 'h-2' }: { partes: ParteDestino[]; altura?: string }) {
   const descricao = partes.map((p) => `${p.nome} ${pct(p.fracao)}`).join(', ')
   return (
@@ -15,7 +15,7 @@ export function BarraDestinos({ partes, altura = 'h-2' }: { partes: ParteDestino
   )
 }
 
-/** Legenda compacta: "● Livre 50% · ● Viagem 20% · …" (uma linha que quebra). */
+/** Legenda compacta: "● Investido 50% · ● Viagem 20% · …" (uma linha que quebra). */
 export function LegendaCompacta({ partes }: { partes: ParteDestino[] }) {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-texto-2">

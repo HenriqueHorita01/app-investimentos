@@ -49,7 +49,7 @@ export function partesDeDestinos(
     .filter(([, x]) => x.valorAtual > 0.005)
     .map(([chave, x]): ParteDestino => {
       const base = { chave, valor: x.valorAtual, fracao: total > 0 ? x.valorAtual / total : 0 }
-      if (chave === LIVRE) return { ...base, tipo: 'livre', nome: 'Livre', cor: 'var(--positivo)' }
+      if (chave === LIVRE) return { ...base, tipo: 'livre', nome: 'Investido', cor: 'var(--positivo)' }
       if (reserva && chave === reserva.id) return { ...base, tipo: 'reserva', nome: 'Reserva', cor: 'var(--emergencia)' }
       const o = objetivos.find((x) => x.id === chave)
       return { ...base, tipo: 'objetivo', nome: o?.nome ?? 'Objetivo', cor: o ? corObjetivo(o) : 'var(--reservado)' }

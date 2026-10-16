@@ -8,7 +8,7 @@ const ITENS = [
   },
   {
     para: '/carteira',
-    rotulo: 'Carteira',
+    rotulo: 'Ativos',
     icone: (
       <>
         <circle cx="12" cy="12" r="9" />

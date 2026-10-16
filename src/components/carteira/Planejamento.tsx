@@ -72,7 +72,7 @@ export function Planejamento({ dados, aoMudar }: { dados: DadosMinhaCarteira; ao
         )}
         <div className="grid grid-cols-2 gap-3 border-t border-linha pt-3 text-[13px]">
           <div>
-            <div className="text-xs text-texto-2">Valor atual (parte livre)</div>
+            <div className="text-xs text-texto-2">Valor atual (parte Investido)</div>
             <div className="font-mono">{formatarBRL(valorCarteira)}</div>
           </div>
           <div>
@@ -84,7 +84,7 @@ export function Planejamento({ dados, aoMudar }: { dados: DadosMinhaCarteira; ao
           </div>
         </div>
         <div className="text-xs text-texto-2">
-          A Minha Carteira usa só a parte <b>Livre</b> dos investimentos. Reserva de emergência e objetivos ficam de fora.
+          A Minha Carteira usa só a parte <b>Investido</b> dos investimentos. Reserva de emergência e objetivos ficam de fora.
         </div>
       </Cartao>
 
@@ -270,7 +270,7 @@ function ForaDaCarteira({ ativos, categorias, aoMudar }: { ativos: AtivoPlano[];
   return (
     <Cartao className="flex flex-col gap-3 border border-reservado/40">
       <div>
-        <div className="text-sm font-bold">Investimentos livres sem categoria</div>
+        <div className="text-sm font-bold">Investimentos sem categoria</div>
         <div className="text-xs text-texto-2">Você já tem estes investimentos. Escolha a categoria para eles entrarem na Minha Carteira.</div>
       </div>
       {ativos.map((a) => (
@@ -414,7 +414,7 @@ function CartaoCategoria({ c, dados, aoMudar }: { c: CategoriaPlano; dados: Dado
             {semCategoria.map((a) => (
               <option key={a.ativo.id} value={a.ativo.id}>
                 {rotuloAtivo(a.ativo)} — {NOME_TIPO[a.ativo.tipo]}
-                {a.valorLivre > 0.005 ? ` · livre ${formatarBRL(a.valorLivre)}` : ''}
+                {a.valorLivre > 0.005 ? ` · investido ${formatarBRL(a.valorLivre)}` : ''}
               </option>
             ))}
           </select>

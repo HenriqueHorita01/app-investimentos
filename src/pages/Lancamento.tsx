@@ -23,7 +23,7 @@ export default function Lancamento() {
 
   const [aba, setAba] = useState<Aba>('aporte')
   const [ativoId, setAtivoId] = useState(params.get('ativo') ?? '')
-  /** '' = livre; senão, id do objetivo. */
+  /** '' = Investido; senão, id do objetivo ou da reserva. */
   const [destino, setDestino] = useState(params.get('objetivo') ?? '')
   const [data, setData] = useState(hojeSP())
   const [qtd, setQtd] = useState(params.get('qtd') ?? '')  // pode vir do simulador
@@ -79,7 +79,7 @@ export default function Lancamento() {
   const cotacaoN = posicaoAntiga && qtdN > 0 && valorAtualTotalN > 0 ? valorAtualTotalN / qtdN : NaN
   const dividendosN = lerNumero(dividendosAnteriores)
   const valorAtualAntiga = posicaoAntiga && valorAtualTotalN > 0 ? arred2(valorAtualTotalN) : 0
-  const nomeDestino = chaveDestino === LIVRE ? 'livre' : `em "${nomeDoDestino(destino)}"`
+  const nomeDestino = chaveDestino === LIVRE ? 'em "Investido"' : `em "${nomeDoDestino(destino)}"`
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -298,7 +298,7 @@ export default function Lancamento() {
               <Link to="/objetivos?novo=1&voltar=/lancar" className="text-xs text-positivo">+ Novo objetivo</Link>
             </div>
             <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setErro(null) }}>
-              <option value="">Livre</option>
+              <option value="">Investido</option>
               {reservaId && <option value={reservaId}>Reserva de emergência</option>}
               {objetivos.length > 0 && (
                 <optgroup label="Objetivos">

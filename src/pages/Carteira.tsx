@@ -28,7 +28,7 @@ export default function Carteira() {
         </Link>
       }
     >
-      Carteira
+      Ativos
     </Titulo>
   )
 

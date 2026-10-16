@@ -44,7 +44,7 @@ export default function Ativo() {
   const voltar = (
     <Link to="/carteira" className="-mb-1 flex min-h-8 items-center gap-1 text-sm text-positivo">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
-      Carteira
+      Ativos
     </Link>
   )
 
@@ -323,7 +323,7 @@ function UsoDoAtivo({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Ca
   const partes = partesDoAtivo(p, carteira.objetivos, carteira.reserva)
 
   async function liberar(chave: string, nome: string, valor: number) {
-    if (!confirm(`Liberar ${formatarBRL(valor)} de "${nome}"? Volta a ser livre neste investimento.`)) return
+    if (!confirm(`Liberar ${formatarBRL(valor)} de "${nome}"? Volta para "Investido" neste investimento.`)) return
     setErro(null)
     try {
       await liberarDoObjetivo(a.id, chave)
@@ -543,7 +543,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
   const [editando, setEditando] = useState<string | null>(null)
   const rv = ehRendaVariavel(a.tipo)
   const lista = [...a.movimentacoes].reverse()
-  // Destinos possíveis de um lançamento: reserva de emergência e objetivos (além de livre).
+  // Destinos possíveis de um lançamento: reserva de emergência e objetivos (além de Investido).
   const objetivos = [{ ...carteira.reserva, nome: 'Reserva de emergência' }, ...carteira.objetivos]
 
   async function excluir(m: Movimentacao) {
@@ -642,7 +642,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
                   onChange={(e) => trocarDestino(m, e.target.value)}
                   aria-label={`Destino do ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)}`}
                 >
-                  <option value="">Livre</option>
+                  <option value="">Investido</option>
                   {opcoes.map((o) => (
                     <option key={o.id} value={o.id}>{o.nome}</option>
                   ))}

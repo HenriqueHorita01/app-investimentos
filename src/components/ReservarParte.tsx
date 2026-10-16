@@ -9,7 +9,7 @@ import { Campo } from './ui'
 
 /**
  * Separa parte de um investimento para um destino (reserva de emergência ou objetivo).
- * O dinheiro pode sair da parte livre ou de outro destino do mesmo investimento.
+ * O dinheiro pode sair da parte Investido ou de outro destino do mesmo investimento.
  * Pode vir com o ativo fixo (detalhe do ativo) ou com o destino fixo (Objetivos / Reserva).
  */
 export function ReservarParte({
@@ -32,8 +32,8 @@ export function ReservarParte({
   // Reserva de emergência primeiro, depois os objetivos em aberto.
   const destinos = [carteira.progressoReserva, ...carteira.progresso.filter((p) => !p.objetivo.concluido)]
   const nomeDestino = (id: string) =>
-    id === LIVRE ? 'Livre' : id === carteira.reserva.id ? 'Reserva de emergência' : (destinos.find((d) => d.objetivo.id === id)?.objetivo.nome ?? '')
-  // "Livre" também é destino quando o dinheiro sai de um objetivo/reserva.
+    id === LIVRE ? 'Investido' : id === carteira.reserva.id ? 'Reserva de emergência' : (destinos.find((d) => d.objetivo.id === id)?.objetivo.nome ?? '')
+  // "Investido" também é destino quando o dinheiro sai de um objetivo/reserva.
   const opcoesPara = [...destinos.map((d) => d.objetivo.id), ...(origemFixa && origemFixa !== LIVRE ? [LIVRE] : [])].filter((id) => id !== origemFixa)
 
   const [ativoId, setAtivoId] = useState(ativoFixo ?? ativos[0]?.id ?? '')
@@ -53,7 +53,7 @@ export function ReservarParte({
   const falta = destino && alvo != null ? Math.max(0, alvo - destino.valorAtual) : 0
   const v = lerNumero(valor)
   const br = (n: number) => n.toFixed(2).replace('.', ',')
-  const nomeOrigem = origem ? (origem.chave === LIVRE ? 'Livre' : origem.nome) : ''
+  const nomeOrigem = origem ? (origem.chave === LIVRE ? 'Investido' : origem.nome) : ''
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -106,7 +106,7 @@ export function ReservarParte({
               const livre = a.posicao.porDestino[LIVRE]?.valorAtual ?? 0
               return (
                 <option key={a.id} value={a.id}>
-                  {rotuloAtivo(a)} — {formatarBRL(a.posicao.valorAtual)}{livre >= 0.01 ? ` (livre ${formatarBRL(livre)})` : ''}
+                  {rotuloAtivo(a)} — {formatarBRL(a.posicao.valorAtual)}{livre >= 0.01 ? ` (investido ${formatarBRL(livre)})` : ''}
                 </option>
               )
             })}
@@ -134,7 +134,7 @@ export function ReservarParte({
           <select id="rp-origem" className="campo" value={origem?.chave ?? ''} onChange={(e) => setOrigemEscolhida(e.target.value)}>
             {origens.map((o) => (
               <option key={o.chave} value={o.chave}>
-                {o.chave === LIVRE ? 'Livre' : o.nome} — {formatarBRL(o.valor)}
+                {o.chave === LIVRE ? 'Investido' : o.nome} — {formatarBRL(o.valor)}
               </option>
             ))}
           </select>

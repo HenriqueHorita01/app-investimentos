@@ -168,7 +168,7 @@ function CartaoObjetivo({
                   type="button"
                   className="text-xs font-bold text-texto-2"
                   onClick={() => {
-                    if (confirm(`Liberar ${formatarBRL(u.valorAtual)} de ${u.rotulo}? Volta a ser investimento livre.`)) acao(() => liberarDoObjetivo(u.ativoId, o.id))
+                    if (confirm(`Liberar ${formatarBRL(u.valorAtual)} de ${u.rotulo}? Volta para "Investido".`)) acao(() => liberarDoObjetivo(u.ativoId, o.id))
                   }}
                 >
                   Liberar
@@ -211,7 +211,7 @@ function CartaoObjetivo({
           className="text-negativo"
           onClick={() => {
             const msg = p.valorAtual > 0
-              ? `Desistir de "${o.nome}"? Os ${formatarBRL(p.valorAtual)} reservados voltam a ser investimento livre. Os lançamentos continuam.`
+              ? `Desistir de "${o.nome}"? Os ${formatarBRL(p.valorAtual)} reservados voltam para "Investido". Os lançamentos continuam.`
               : `Excluir o objetivo "${o.nome}"?`
             if (confirm(msg)) acao(() => excluirObjetivo(o.id))
           }}

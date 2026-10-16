@@ -182,7 +182,7 @@ export default function NovoAtivo() {
               <input type="checkbox" className="mt-0.5 h-5 w-5 accent-[var(--positivo)]" checked={reserva} onChange={(e) => setReserva(e.target.checked)} />
               <span>
                 <b>É reserva de emergência</b>
-                <span className="block text-xs text-texto-2">O primeiro aporte já vai para a Reserva de emergência (fora do patrimônio). Depois dá para dividir com objetivos ou deixar parte livre.</span>
+                <span className="block text-xs text-texto-2">O primeiro aporte já vai para a Reserva de emergência (fora do patrimônio). Depois dá para dividir com objetivos ou deixar parte em "Investido".</span>
               </span>
             </label>
           )}
