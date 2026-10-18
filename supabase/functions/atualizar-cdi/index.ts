@@ -47,7 +47,16 @@ Deno.serve(async (req) => {
     const r = await fetch(url, { headers: { Accept: 'application/json' } })
     if (r.status === 404) continue // janela sem dados (ex.: fim de semana)
     if (!r.ok) return Response.json({ erro: `BCB respondeu ${r.status}`, gravados }, { status: 502 })
-    const linhas = (await r.json()) as { data: string; valor: string }[]
+    // Às vezes a API devolve uma página de erro (XML/HTML) com status 200: não quebra,
+    // só tenta de novo na próxima execução agendada.
+    const texto = await r.text()
+    let linhas: { data: string; valor: string }[]
+    try {
+      linhas = JSON.parse(texto)
+      if (!Array.isArray(linhas)) throw new Error('resposta sem lista')
+    } catch {
+      return Response.json({ erro: 'BCB devolveu uma resposta inválida; tenta de novo na próxima execução', gravados }, { status: 503 })
+    }
     const registros = linhas.map((l) => ({ data: paraISO(l.data), taxa_dia: Number(l.valor), fonte: 'bcb_sgs_12' }))
     for (let i = 0; i < registros.length; i += 1000) {
       const { error } = await supabase.from('cdi_diario').upsert(registros.slice(i, i + 1000), { onConflict: 'data' })
