@@ -4,7 +4,9 @@ import { carregarCarteira, type AtivoComPosicao, type Carteira as DadosCarteira 
 import { classeDoTipo, descreverTaxa, ehRendaVariavel, NOME_CLASSE, NOME_TIPO, rotuloAtivo, type Classe } from '../lib/tipos'
 import { partesDeDestinos, partesDoAtivo, somarDestinos } from '../lib/objetivos'
 import { BarraDestinos, LegendaCompacta, LegendaDetalhada } from '../components/BarraDestinos'
-import { formatarBRLInteiro, formatarCompacto, formatarNumero, formatarPercentual } from '../lib/formato'
+import { formatarBRL, formatarBRLInteiro, formatarCompacto, formatarNumero, formatarPercentual, hojeSP } from '../lib/formato'
+import { calcularLiquido, liquidoVigente } from '../lib/liquido'
+import { SeloLiquido } from '../components/Liquido'
 import { useCarregar } from '../lib/useCarregar'
 import { Cartao, Carregando, corSinal, Erro, Titulo } from '../components/ui'
 
@@ -64,10 +66,32 @@ export default function Carteira() {
     .sort((a, b) => b.posicao.valorAtual - a.posicao.valorAtual)
 
   const distribuicao = partesDeDestinos(somarDestinos(ativos.map((a) => a.posicao)), dados.objetivos, dados.reserva)
+  // Visão realista: soma do saldo líquido vigente (calculado ou informado) de cada investimento.
+  const hoje = hojeSP()
+  const liquidos = ativos.map((a) => liquidoVigente(a, calcularLiquido(a, a.posicao, hoje).liquido, a.movimentacoes))
+  const totalLiquido = liquidos.reduce((s, l) => s + l.valor, 0)
+  const manuais = liquidos.filter((l) => l.manual).length
+  const revisar = liquidos.filter((l) => l.desatualizado).length
 
   return (
     <>
       {cabecalho}
+
+      <Cartao className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs text-texto-2">Saldo bruto</div>
+          <div className="font-mono text-[17px]">{formatarBRL(total)}</div>
+        </div>
+        <div>
+          <div className="text-xs text-texto-2">Saldo líquido (se resgatar tudo)</div>
+          <div className="font-mono text-[17px] font-bold">{formatarBRL(totalLiquido)}</div>
+        </div>
+        <div className="col-span-2 text-[11px] text-texto-2">
+          Líquido estimado depois de IR/IOF
+          {manuais > 0 ? ` · ${manuais} investimento(s) com valor informado manualmente` : ''}
+          {revisar > 0 ? ` · ${revisar} para revisar` : ''}. Inclui reserva e objetivos; não muda as destinações.
+        </div>
+      </Cartao>
 
       {distribuicao.length > 0 && (
         <Cartao className="flex flex-col gap-3">
@@ -129,6 +153,7 @@ export default function Carteira() {
 
 function LinhaAtivo({ a, dados, ultima }: { a: AtivoComPosicao; dados: DadosCarteira; ultima: boolean }) {
   const p = a.posicao
+  const liq = liquidoVigente(a, calcularLiquido(a, p, hojeSP()).liquido, a.movimentacoes)
   const rv = ehRendaVariavel(a.tipo)
   const partes = partesDoAtivo(p, dados.objetivos, dados.reserva)
   const sub = rv
@@ -150,6 +175,10 @@ function LinhaAtivo({ a, dados, ultima }: { a: AtivoComPosicao; dados: DadosCart
         ) : (
           <div className={`text-xs ${corSinal(p.variacao)}`}>{formatarPercentual(p.variacaoPercentual)}</div>
         )}
+        <div className="flex items-center justify-end gap-1 text-[11px] text-texto-2">
+          líq. <span className="font-mono">{formatarBRLInteiro(liq.valor)}</span>
+          {(liq.manual || liq.desatualizado) && <SeloLiquido manual={liq.manual} desatualizado={liq.desatualizado} />}
+        </div>
       </div>
       </div>
       {partes.length > 0 && (
