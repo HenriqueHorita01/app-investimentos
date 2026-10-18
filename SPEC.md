@@ -69,8 +69,14 @@ Toda tabela de usuário tem `user_id` e RLS: cada usuário só vê os próprios 
 - O CDI muda → só os dias seguintes mudam. Passado é fixo.
 - Cada aporte é um lote com data própria (IR depende da idade do lote).
 
+### Aplicações individuais (renda fixa)
+- Cada aporte de CDB, LCI/LCA ou Tesouro é uma **aplicação** com taxa, indexador, vencimento, liquidez e carência próprios (vazios = herdam do ativo).
+- Rendimento por dia útil, por aplicação: % do CDI; Prefixado `(1+taxa)^(1/252)`; Selic ≈ CDI × `(1+taxa)^(1/252)`; IPCA+ `(1+IPCA do mês)^(1/dias úteis do mês) × (1+taxa real)^(1/252)` ("na curva"; IPCA ainda não divulgado = último conhecido, marcado como estimativa).
+- Cada aplicação para de render no próprio vencimento. Resgates saem das aplicações mais antigas primeiro (PEPS).
+- IPCA mensal: BCB SGS 433 (reserva: IBGE SIDRA 1737).
+
 ### Impostos (estimativa de saldo líquido)
-- IR regressivo sobre o ganho de cada lote: até 180 dias 22,5%; 181–360 20%; 361–720 17,5%; acima de 720 15%.
+- IR regressivo sobre o ganho de **cada aplicação**, pelo prazo dela (nunca uma alíquota única para o grupo): até 180 dias 22,5%; 181–360 20%; 361–720 17,5%; acima de 720 15%.
 - IOF regressivo nos primeiros 30 dias.
 - FII: rendimento isento para pessoa física.
 - JCP: 15% retido na fonte.
