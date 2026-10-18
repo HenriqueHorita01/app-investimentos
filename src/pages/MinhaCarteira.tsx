@@ -6,11 +6,13 @@ import { Cartao, Carregando, Erro, Titulo } from '../components/ui'
 import { Planejamento } from '../components/carteira/Planejamento'
 import { Simulador } from '../components/carteira/Simulador'
 import { Prioridades } from '../components/carteira/Prioridades'
+import { RendaFixa } from '../components/carteira/RendaFixa'
 
 const AREAS = [
   { id: 'planejamento', rotulo: 'Planejamento', etapa: 1 },
   { id: 'simulador', rotulo: 'Simulador', etapa: 2 },
   { id: 'prioridades', rotulo: 'Prioridades', etapa: 2 },
+  { id: 'renda-fixa', rotulo: 'Renda fixa', etapa: 2 },
   { id: 'acompanhamento', rotulo: 'Acompanhamento', etapa: 4 },
 ] as const
 type Area = (typeof AREAS)[number]['id']
@@ -58,6 +60,8 @@ export default function MinhaCarteira() {
         <Simulador dados={dados} />
       ) : area === 'prioridades' ? (
         <Prioridades dados={dados} />
+      ) : area === 'renda-fixa' ? (
+        <RendaFixa dados={dados} />
       ) : (
         <Cartao className="text-sm text-texto-2">
           A área <b className="text-texto">{AREAS.find((a) => a.id === area)!.rotulo}</b> chega na etapa {AREAS.find((a) => a.id === area)!.etapa} da
