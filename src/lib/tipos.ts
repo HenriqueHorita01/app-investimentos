@@ -150,7 +150,12 @@ export const INDEXADORES: { id: Indexador; nome: string; rotuloTaxa: string; exe
 ]
 
 /** "102% CDI", "IPCA + 6,5%", "12,5% a.a.", "Selic + 0,1%" (vazio se não houver taxa). */
-export function descreverTaxa(a: Pick<Ativo, 'indexador' | 'taxa'>): string {
+export function descreverTaxa(a: Pick<Ativo, 'indexador' | 'taxa'> & { progressiva?: ConfigProgressiva | null }): string {
+  if (a.progressiva?.faixas.length) {
+    const f = a.progressiva.faixas
+    const pct = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+    return `Progressivo ${pct(f[0].percentual)}% → ${pct(f[f.length - 1].percentual)}% CDI`
+  }
   const t = a.taxa != null ? a.taxa.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : null
   if (a.indexador === 'cdi') return t ? `${t}% CDI` : 'CDI'
   if (a.indexador === 'ipca') return t ? `IPCA + ${t}%` : 'IPCA'

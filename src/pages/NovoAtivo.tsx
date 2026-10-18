@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCategorias, criarAtivo } from '../lib/dados'
 import { tipoDaCategoria } from '../lib/carteiraPlano'
 import { lerNumero } from '../lib/formato'
-import { ehRendaVariavel, INDEXADORES, NOME_TIPO, TIPOS_MVP, type Indexador, type TipoAtivo } from '../lib/tipos'
+import { ehRendaVariavel, NOME_TIPO, TIPOS_MVP, type Indexador, type TipoAtivo } from '../lib/tipos'
+import { EditorRentabilidade, estadoRentabilidade, lerRentabilidade, type EstadoRentabilidade } from '../components/Progressiva'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Titulo } from '../components/ui'
 
@@ -18,12 +19,12 @@ export default function NovoAtivo() {
   const [reserva, setReserva] = useState(params.get('reserva') === '1')
   const [tipoEscolhido, setTipo] = useState<TipoAtivo | null>(reserva ? 'cdb' : null)
   const tipo: TipoAtivo = tipoEscolhido ?? tipoDaCategoria(categoria?.nome) ?? 'fii'
-  const [indexadorEscolhido, setIndexador] = useState<Indexador | null>(null)
-  const indexador: Indexador = indexadorEscolhido ?? (tipo === 'tesouro' ? (categoria?.nome.toLowerCase().includes('selic') ? 'selic' : 'ipca') : 'cdi')
+  const indexadorPadrao: Indexador = tipo === 'tesouro' ? (categoria?.nome.toLowerCase().includes('selic') ? 'selic' : 'ipca') : 'cdi'
+  const [rentEscolhida, setRent] = useState<EstadoRentabilidade | null>(null)
+  const rent = rentEscolhida ?? estadoRentabilidade(undefined, indexadorPadrao)
   const [ticker, setTicker] = useState('')
   const [nome, setNome] = useState('')
   const [instituicao, setInstituicao] = useState('')
-  const [taxa, setTaxa] = useState('')
   const [vencimento, setVencimento] = useState('')
   // Planejamento (só quando vem da Minha Carteira).
   const [percentual, setPercentual] = useState('')
@@ -35,7 +36,6 @@ export default function NovoAtivo() {
   const [salvando, setSalvando] = useState(false)
 
   const rv = ehRendaVariavel(tipo)
-  const idx = INDEXADORES.find((i) => i.id === indexador)!
   const opcional = (t: string) => (t.trim() ? lerNumero(t) : null)
 
   async function salvar(e: FormEvent) {
@@ -43,9 +43,8 @@ export default function NovoAtivo() {
     setErro(null)
     const tk = ticker.trim().toUpperCase()
     if (rv && !/^[A-Z]{4}\d{1,2}[A-Z]?$/.test(tk)) return setErro('Ticker inválido. Ex.: HGLG11, PETR4, WRLD11.')
-    const taxaN = opcional(taxa)
-    if (!rv && idx.taxaObrigatoria && !(taxaN != null && taxaN > 0)) return setErro(`Informe a taxa (${idx.rotuloTaxa}). Ex.: ${idx.exemplo}.`)
-    if (!rv && taxaN != null && Number.isNaN(taxaN)) return setErro('Taxa inválida.')
+    const rf = rv ? null : lerRentabilidade(rent)
+    if (typeof rf === 'string') return setErro(rf)
     if (!rv && !nome.trim()) return setErro('Informe um nome. Ex.: CDB Banco X, LCI Banco Y, Tesouro IPCA+ 2035.')
     const pctN = opcional(percentual)
     if (pctN != null && !(pctN >= 0 && pctN <= 100)) return setErro('Percentual inválido (0 a 100).')
@@ -61,15 +60,17 @@ export default function NovoAtivo() {
         ticker: rv ? tk : null,
         nome: rv ? nome.trim() || tk : nome.trim(),
         instituicao: instituicao.trim() || null,
-        indexador: rv ? 'nenhum' : indexador,
-        taxa: rv ? null : taxaN,
+        indexador: rf ? rf.indexador : 'nenhum',
+        taxa: rf ? rf.taxa : null,
+        progressiva: rf?.progressiva ?? null,
+        carencia_dias: rf?.carencia_dias ?? null,
         vencimento: !rv && vencimento ? vencimento : null,
+        aplicacao_minima: rv ? null : minN,
         ...(categoriaId
           ? {
               categoria_id: categoriaId,
               percentual_alvo: pctN,
               preco_referencia: precoN,
-              aplicacao_minima: rv ? null : minN,
               incremento_minimo: rv ? null : incN,
               liquidez: rv ? null : liquidez.trim() || null,
             }
@@ -112,7 +113,7 @@ export default function NovoAtivo() {
               aria-selected={tipo === t}
               onClick={() => {
                 setTipo(t)
-                setIndexador(null)
+                setRent(null)
               }}
               className={`rounded-[9px] py-2.5 text-sm ${tipo === t ? 'bg-segmento-ativo font-bold shadow-sm' : 'text-texto-2'}`}
             >
@@ -152,26 +153,16 @@ export default function NovoAtivo() {
                   required
                 />
               </Campo>
-              <Campo id="indexador" rotulo="Indexador">
-                <select id="indexador" className="campo" value={indexador} onChange={(e) => setIndexador(e.target.value as Indexador)}>
-                  {INDEXADORES.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nome}</option>
-                  ))}
-                </select>
-              </Campo>
+              <EditorRentabilidade id="na" valor={rent} mudar={setRent} />
               <div className="grid grid-cols-2 gap-3">
-                <Campo id="taxa" rotulo={idx.rotuloTaxa}>
-                  <input id="taxa" className="campo font-mono" inputMode="decimal" placeholder={idx.exemplo} value={taxa} onChange={(e) => setTaxa(e.target.value)} />
+                <Campo id="venc" rotulo="Vencimento (opcional)">
+                  <input id="venc" type="date" className="campo !px-2 !text-sm" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
                 </Campo>
-                <Campo id="venc" rotulo="Vencimento">
-                  <input id="venc" type="date" className="campo" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
+                <Campo id="min" rotulo="Aplicação mínima (opcional)">
+                  <input id="min" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
                 </Campo>
               </div>
-              {indexador !== 'cdi' && (
-                <div className="text-xs text-texto-2">
-                  O rendimento automático é calculado só para % do CDI. Para {idx.nome}, o saldo é atualizado pelo extrato (Corrigir saldo).
-                </div>
-              )}
+              <div className="text-xs text-texto-2">Tributação: IR regressivo e IOF por aplicação (LCI/LCA isentas), calculados automaticamente.</div>
             </>
           )}
           <Campo id="inst" rotulo="Instituição / corretora (opcional)">
@@ -201,14 +192,9 @@ export default function NovoAtivo() {
             </div>
             {!rv && (
               <>
-                <div className="grid grid-cols-2 gap-3">
-                  <Campo id="min" rotulo="Aplicação mínima">
-                    <input id="min" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
-                  </Campo>
-                  <Campo id="inc" rotulo="Incremento mínimo">
-                    <input id="inc" className="campo font-mono" inputMode="decimal" placeholder="—" value={incremento} onChange={(e) => setIncremento(e.target.value)} />
-                  </Campo>
-                </div>
+                <Campo id="inc" rotulo="Incremento mínimo">
+                  <input id="inc" className="campo font-mono" inputMode="decimal" placeholder="—" value={incremento} onChange={(e) => setIncremento(e.target.value)} />
+                </Campo>
                 <Campo id="liq" rotulo="Liquidez">
                   <input id="liq" className="campo" placeholder="diária, no vencimento, D+30…" value={liquidez} onChange={(e) => setLiquidez(e.target.value)} />
                 </Campo>

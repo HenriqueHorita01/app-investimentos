@@ -1,11 +1,18 @@
 import { useState } from 'react'
-import { diasCorridos, tributacaoDoLote, type Lote, type Tributacao } from '../lib/calculos'
+import { diasCorridos, percentualVigente, tributacaoDoLote, type Lote, type Tributacao } from '../lib/calculos'
+import { emCarencia, faixaDoLote } from './Progressiva'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarPercentual } from '../lib/formato'
 import { descreverTaxa, type TipoAtivo } from '../lib/tipos'
 import { corSinal } from './ui'
 
 /** LCI/LCA: isentas de IR e IOF para pessoa física. */
 export const ehIsenta = (tipo: TipoAtivo) => tipo === 'lci_lca'
+
+/** Taxa de uma aplicação; na progressiva, o % do CDI da faixa vigente. */
+export function descreverTaxaLote(l: Lote): string {
+  if (l.progressiva) return `${percentualVigente(l)?.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% CDI (progressivo)`
+  return descreverTaxa({ indexador: l.indexador, taxa: l.taxa })
+}
 
 export type SituacaoVencimento = 'vencida' | 'proxima' | null
 
@@ -74,11 +81,12 @@ export function ListaAplicacoes({
             <button type="button" onClick={() => setAberto(exp ? null : chave)} aria-expanded={exp} className="flex w-full items-start justify-between gap-2 text-left">
               <span className="min-w-0">
                 <span className="text-[13px] font-bold">{formatarData(l.data)}</span>
-                <span className="text-xs text-texto-2"> · {formatarBRL(l.aplicado)} · {descreverTaxa(l) || 'sem taxa'}</span>
+                <span className="text-xs text-texto-2"> · {formatarBRL(l.aplicado)} · {descreverTaxaLote(l) || 'sem taxa'}</span>
                 <span className="flex flex-wrap gap-1.5 pt-0.5">
                   {l.vencimento && <span className="text-[11px] text-texto-2">vence {formatarData(l.vencimento)}</span>}
                   {sit === 'vencida' && <Etiqueta cor="var(--positivo)">vencida · disponível para reinvestir</Etiqueta>}
                   {sit === 'proxima' && <Etiqueta cor="var(--reservado)">vence em {diasCorridos(hoje, l.vencimento!)} dias</Etiqueta>}
+                  {l.saldo > 0.005 && emCarencia(l, hoje) && <Etiqueta cor="var(--reservado)">carência até {formatarData(l.disponivelEm!)}</Etiqueta>}
                   {l.saldo <= 0.005 && <Etiqueta cor="var(--texto-2)">encerrada</Etiqueta>}
                   {nomeDestino && <span className="text-[11px] text-texto-2">· {nomeDestino(l.destino)}</span>}
                 </span>
@@ -88,7 +96,7 @@ export function ListaAplicacoes({
                 <span className={`block text-[11px] ${corSinal(tr.rendimento)}`}>{formatarBRLComSinal(tr.rendimento)}</span>
               </span>
             </button>
-            {exp && <DetalheLote l={l} tr={tr} />}
+            {exp && <DetalheLote l={l} tr={tr} hoje={hoje} />}
           </div>
         )
       })}
@@ -96,7 +104,8 @@ export function ListaAplicacoes({
   )
 }
 
-function DetalheLote({ l, tr }: { l: Lote; tr: Tributacao }) {
+function DetalheLote({ l, tr, hoje }: { l: Lote; tr: Tributacao; hoje: string }) {
+  const fx = faixaDoLote(l, hoje)
   const linha = (rotulo: string, valor: string, cor = '') => (
     <div className="flex justify-between">
       <span className="text-texto-2">{rotulo}</span>
@@ -110,6 +119,9 @@ function DetalheLote({ l, tr }: { l: Lote; tr: Tributacao }) {
       {linha('Saldo bruto', formatarBRL(l.saldo))}
       {linha('Rendimento bruto', formatarBRLComSinal(tr.rendimento), corSinal(tr.rendimento))}
       {linha('Prazo', `${tr.dias} dias`)}
+      {fx && linha(`Faixa ${fx.indice + 1} de ${fx.total}`, `${fx.atual}% do CDI desde ${formatarData(fx.desde)}`)}
+      {fx && linha('Próxima faixa', fx.proxima ? `${fx.proxima.percentual}% em ${formatarData(fx.proxima.data)}` : 'já na última')}
+      {l.disponivelEm && linha('Resgate disponível', emCarencia(l, hoje) ? `a partir de ${formatarData(l.disponivelEm)}` : 'sim')}
       {tr.isenta ? (
         linha('IR', 'isento (LCI/LCA)')
       ) : (

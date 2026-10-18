@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { diasCorridos, LIVRE, tributacaoDoLote, type Lote } from '../../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarPercentual, hojeSP } from '../../lib/formato'
-import { descreverTaxa, ehRendaVariavel, NOME_TIPO, rotuloAtivo } from '../../lib/tipos'
-import { ehIsenta, ListaAplicacoes, situacaoVencimento, totaisDosLotes } from '../Aplicacoes'
+import { ehRendaVariavel, NOME_TIPO, rotuloAtivo } from '../../lib/tipos'
+import { descreverTaxaLote, ehIsenta, ListaAplicacoes, situacaoVencimento, totaisDosLotes } from '../Aplicacoes'
 import { Cartao, corSinal } from '../ui'
 import type { DadosMinhaCarteira } from '../../pages/MinhaCarteira'
 
@@ -127,7 +127,7 @@ export function RendaFixa({ dados }: { dados: DadosMinhaCarteira }) {
         const t = totaisDosLotes(lotes, hoje, ehIsenta(a.tipo))
         const ativas = lotes.filter((l) => l.saldo > 0.005)
         const exp = aberto === a.id
-        const taxas = [...new Set(ativas.map((l) => descreverTaxa(l)).filter(Boolean))]
+        const taxas = [...new Set(ativas.map((l) => descreverTaxaLote(l)).filter(Boolean))]
         return (
           <Cartao key={a.id} className="flex flex-col gap-2.5">
             <button type="button" onClick={() => setAberto(exp ? null : a.id)} aria-expanded={exp} className="flex items-start justify-between gap-2 text-left">

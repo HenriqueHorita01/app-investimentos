@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { Ativo, CategoriaCarteira, CdiDia, Cotacao, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
 import { ehRendaVariavel, rotuloAtivo } from './tipos'
 import { CATEGORIAS_PADRAO } from './carteiraPlano'
+import { lerConfig } from './progressiva'
 import { calcularPosicao, progressoObjetivos, type Posicao, type ProgressoObjetivo, type SerieIpca } from './calculos'
 
 export interface AtivoComPosicao extends Ativo {
@@ -101,6 +102,8 @@ export async function carregarCarteira(): Promise<Carteira> {
     aplicacao_minima: num(a.aplicacao_minima),
     incremento_minimo: num(a.incremento_minimo),
     liquido_manual: num(a.liquido_manual),
+    progressiva: lerConfig(a.progressiva),
+    carencia_dias: a.carencia_dias == null ? null : Number(a.carencia_dias),
   }))
   const todosObjetivos = ((objetivosR.data ?? []) as Objetivo[]).map((o) => ({ ...o, valor_alvo: num(o.valor_alvo) }))
   const objetivos = todosObjetivos.filter((o) => o.tipo !== 'reserva_emergencia')
@@ -176,6 +179,8 @@ export interface NovoAtivo {
   aplicacao_minima?: number | null
   incremento_minimo?: number | null
   liquidez?: string | null
+  progressiva?: Ativo['progressiva']
+  carencia_dias?: number | null
 }
 
 export async function criarAtivo(novo: NovoAtivo): Promise<Ativo> {
@@ -201,6 +206,8 @@ export type EdicaoAtivo = Partial<
     | 'incremento_minimo'
     | 'liquidez'
     | 'lote'
+    | 'progressiva'
+    | 'carencia_dias'
   >
 >
 
@@ -232,6 +239,8 @@ export interface NovaMovimentacao {
   vencimento?: string | null
   liquidez?: string | null
   carencia?: string | null
+  /** Resgate de uma aplicação específica (null = mais antigas primeiro). */
+  aplicacao_id?: string | null
 }
 
 /** Grava um ou mais lançamentos de uma vez (tudo ou nada). */
@@ -248,7 +257,7 @@ export async function excluirMovimentacao(id: string): Promise<void> {
 export type EdicaoMovimentacao = Partial<
   Pick<
     Movimentacao,
-    'data' | 'quantidade' | 'preco_unitario' | 'valor_total' | 'observacao' | 'objetivo_id' | 'taxa' | 'indexador' | 'vencimento' | 'liquidez' | 'carencia'
+    'data' | 'quantidade' | 'preco_unitario' | 'valor_total' | 'observacao' | 'objetivo_id' | 'taxa' | 'indexador' | 'vencimento' | 'liquidez' | 'carencia' | 'aplicacao_id'
   >
 >
 

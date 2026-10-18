@@ -26,6 +26,7 @@ import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, rotuloAtivo, ty
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
 import { ReservarParte } from '../components/ReservarParte'
+import { CartaoProgressiva, EditorRentabilidade, estadoRentabilidade, lerRentabilidade } from '../components/Progressiva'
 
 const NOME_MOV: Record<Movimentacao['tipo'], string> = {
   aporte: 'Aporte',
@@ -197,10 +198,9 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
   // Na renda variável, nome igual ao ticker = sem nome próprio (campo vazio).
   const [nome, setNome] = useState(rv && a.nome === a.ticker ? '' : a.nome)
   const [instituicao, setInstituicao] = useState(a.instituicao ?? '')
-  const [taxa, setTaxa] = useState(a.taxa != null ? String(a.taxa).replace('.', ',') : '')
-  const [indexador, setIndexador] = useState<Indexador>(a.indexador === 'nenhum' ? 'cdi' : a.indexador)
+  const [rent, setRent] = useState(() => estadoRentabilidade(a))
+  const [minimo, setMinimo] = useState(a.aplicacao_minima != null ? String(a.aplicacao_minima).replace('.', ',') : '')
   const [tipoRf, setTipoRf] = useState<TipoAtivo>(a.tipo)
-  const idx = INDEXADORES.find((i) => i.id === indexador) ?? INDEXADORES[0]
   const [vencimento, setVencimento] = useState(a.vencimento ?? '')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -216,10 +216,12 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
       if (!/^[A-Z]{4}\d{1,2}[A-Z]?$/.test(tk)) return setErro('Ticker inválido. Ex.: HGLG11, PETR4.')
       campos = { tipo, ticker: tk, nome: nome.trim() || tk, instituicao: instituicao.trim() || null }
     } else {
-      const taxaN = taxa.trim() ? lerNumero(taxa) : null
       if (!nome.trim()) return setErro('Informe um nome.')
-      if (idx.taxaObrigatoria && !(taxaN != null && taxaN > 0)) return setErro(`Informe a taxa (${idx.rotuloTaxa}). Ex.: ${idx.exemplo}.`)
-      campos = { tipo: tipoRf, nome: nome.trim(), indexador, taxa: taxaN, vencimento: vencimento || null, instituicao: instituicao.trim() || null }
+      const rf = lerRentabilidade(rent)
+      if (typeof rf === 'string') return setErro(rf)
+      const minN = minimo.trim() ? lerNumero(minimo) : null
+      if (minN != null && !(minN >= 0)) return setErro('Aplicação mínima inválida.')
+      campos = { tipo: tipoRf, nome: nome.trim(), ...rf, aplicacao_minima: minN, vencimento: vencimento || null, instituicao: instituicao.trim() || null }
     }
     setSalvando(true)
     try {
@@ -268,32 +270,24 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
             <Campo id="ea-nome" rotulo="Nome">
               <input id="ea-nome" className="campo" value={nome} onChange={(e) => setNome(e.target.value)} />
             </Campo>
+            <Campo id="ea-tipo" rotulo="Tipo">
+              <select id="ea-tipo" className="campo" value={tipoRf} onChange={(e) => setTipoRf(e.target.value as TipoAtivo)}>
+                {(['cdb', 'lci_lca', 'tesouro'] as const).map((t) => (
+                  <option key={t} value={t}>{NOME_TIPO[t]}</option>
+                ))}
+              </select>
+            </Campo>
+            <EditorRentabilidade id="ea" valor={rent} mudar={setRent} />
             <div className="grid grid-cols-2 gap-3">
-              <Campo id="ea-taxa" rotulo={idx.rotuloTaxa}>
-                <input id="ea-taxa" className="campo font-mono" inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} />
-              </Campo>
               <Campo id="ea-venc" rotulo="Vencimento">
                 <input id="ea-venc" type="date" className="campo !px-2 !text-sm" value={vencimento} onChange={(e) => setVencimento(e.target.value)} />
               </Campo>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Campo id="ea-tipo" rotulo="Tipo">
-                <select id="ea-tipo" className="campo" value={tipoRf} onChange={(e) => setTipoRf(e.target.value as TipoAtivo)}>
-                  {(['cdb', 'lci_lca', 'tesouro'] as const).map((t) => (
-                    <option key={t} value={t}>{NOME_TIPO[t]}</option>
-                  ))}
-                </select>
-              </Campo>
-              <Campo id="ea-idx" rotulo="Indexador">
-                <select id="ea-idx" className="campo" value={indexador} onChange={(e) => setIndexador(e.target.value as Indexador)}>
-                  {INDEXADORES.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nome}</option>
-                  ))}
-                </select>
+              <Campo id="ea-min" rotulo="Aplicação mínima">
+                <input id="ea-min" className="campo font-mono" inputMode="decimal" placeholder="0,00" value={minimo} onChange={(e) => setMinimo(e.target.value)} />
               </Campo>
             </div>
             <div className="text-xs text-texto-2">
-              Mudar a taxa recalcula todo o rendimento desde a primeira aplicação. Cálculo automático só para % do CDI; nos outros, use "Corrigir saldo".
+              Mudar a rentabilidade recalcula todo o rendimento desde a primeira aplicação (aplicações com condições próprias mantêm as delas).
             </div>
           </>
         )}
@@ -345,9 +339,11 @@ function CartaoAplicacoes({ a, dados }: { a: AtivoComPosicao; dados: Carteira })
           <div className="font-mono font-bold">{formatarBRL(t.liquido)}</div>
         </div>
       </div>
+      {a.progressiva && <CartaoProgressiva lotes={a.posicao.lotes} cfg={a.progressiva} hoje={hoje} cdiUltimo={dados.cdiUltimo} isenta={ehIsenta(a.tipo)} />}
       <ListaAplicacoes lotes={a.posicao.lotes} tipo={a.tipo} hoje={hoje} nomeDestino={nomeDestino} mostrarEncerradas={encerradas} />
       <div className="text-[11px] text-texto-2">
-        Toque numa aplicação para ver o IR do prazo dela. Cada compra tem a sua alíquota; resgates saem das mais antigas primeiro.
+        Toque numa aplicação para ver {a.progressiva ? 'a faixa, ' : ''}o IR do prazo dela. Cada compra tem a sua alíquota{a.progressiva ? ' e conta o próprio prazo' : ''}; resgates
+        saem da aplicação escolhida no lançamento ou, se nenhuma for escolhida, das mais antigas primeiro.
       </div>
     </Cartao>
   )
