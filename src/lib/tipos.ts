@@ -53,6 +53,12 @@ export interface Movimentacao {
   /** null = livre; senão, id do objetivo ou da reserva de emergência. */
   objetivo_id: string | null
   criado_em: string
+  // ---- Renda fixa: condições desta aplicação (vazias = herdam do ativo) ----
+  taxa?: number | null
+  indexador?: Indexador | null
+  vencimento?: string | null
+  liquidez?: string | null
+  carencia?: string | null
 }
 
 export interface Objetivo {

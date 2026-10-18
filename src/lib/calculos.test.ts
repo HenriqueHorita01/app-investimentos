@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ajusteAplicacaoAntiga, ajustesParaSaldo, calcularPosicao, diasUteisEntre, LIVRE, progressoObjetivos, rendimentoNoMes, resumir } from './calculos'
+import { ajusteAplicacaoAntiga, ajustesParaSaldo, aliquotaIR, calcularPosicao, diasUteisEntre, LIVRE, progressoObjetivos, rendimentoNoMes, resumir, tributacaoDoLote, type SerieIpca } from './calculos'
 import type { Ativo, CdiDia, Movimentacao, Objetivo, TipoMovimentacao } from './tipos'
 
 let n = 0
@@ -118,9 +118,9 @@ describe('renda fixa pelo CDI', () => {
     expect(p.porDestino[LIVRE].valorAtual).toBeCloseTo(1020.1)
   })
 
-  it('sem CDI (ou outro indexador) o saldo é o aplicado', () => {
+  it('sem indexador o saldo é o aplicado', () => {
     const movs = [mov('aporte', 10000), mov('resgate', 2500)]
-    const p = calcularPosicao({ ...CDB100, indexador: 'pre' }, movs, null, cdi)
+    const p = calcularPosicao({ ...CDB100, indexador: 'nenhum' }, movs, null, cdi)
     expect(p.valorAtual).toBe(7500)
     expect(p.investido).toBe(7500)
     expect(p.semRendimento).toBe(true)
@@ -293,5 +293,96 @@ describe('aplicação antiga com a data original', () => {
     const ateOntem = calcularPosicao(CDB, movs, null, cdi.filter((d) => d.data < '2026-10-15'))
     expect(ateOntem.valorAtual).toBeCloseTo(2144.92, 2)
     expect(ateOntem.investido).toBe(1999)
+  })
+})
+
+describe('aplicações individuais de renda fixa (lotes)', () => {
+  const cal: CdiDia[] = [
+    { data: '2026-01-05', taxa_dia: 0.05 },
+    { data: '2026-02-02', taxa_dia: 0.05 },
+    { data: '2026-03-02', taxa_dia: 0.05 },
+    { data: '2026-03-03', taxa_dia: 0.05 },
+  ]
+  const TESOURO: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> = { tipo: 'tesouro', indexador: 'ipca', taxa: 6, vencimento: '2035-05-15' }
+  const ipca: SerieIpca = new Map([
+    ['2026-01', 0.4],
+    ['2026-02', 0.3],
+  ])
+
+  it('Tesouro IPCA+ comprado 3 vezes: cada compra com a própria taxa e o total consolidado', () => {
+    const movs = [
+      mov('aporte', 200, null, { data: '2026-01-05', taxa: 6.0 }),
+      mov('aporte', 300, null, { data: '2026-02-02', taxa: 6.3 }),
+      mov('aporte', 500, null, { data: '2026-03-02', taxa: 5.8 }),
+    ]
+    const p = calcularPosicao(TESOURO, movs, null, cal, ipca)
+    expect(p.lotes).toHaveLength(3)
+    expect(p.lotes.map((l) => l.taxa)).toEqual([6.0, 6.3, 5.8])
+    expect(p.investido).toBe(1000)
+    // Soma dos lotes = total do título.
+    expect(p.valorAtual).toBeCloseTo(p.lotes.reduce((s, l) => s + l.saldo, 0), 6)
+    // IPCA do mês pró-rata pelos dias úteis + juro real da compra (6% a.a.).
+    const f = (ipcaMes: number, de: string, ate: string) => (1 + ipcaMes / 100) ** (1 / diasUteisEntre(de, ate)) * 1.06 ** (1 / 252)
+    const jan = f(0.4, '2025-12-31', '2026-01-31')
+    const fev = f(0.3, '2026-01-31', '2026-02-28')
+    const mar = f(0.3, '2026-02-28', '2026-03-31') // março projetado com o IPCA de fevereiro
+    expect(p.lotes[0].saldo).toBeCloseTo(200 * jan * fev * mar * mar, 8)
+    // Março ainda sem IPCA divulgado: usa o último conhecido e marca como estimativa.
+    expect(p.lotes[2].ipcaEstimado).toBe(true)
+    expect(p.lotes[0].ipcaEstimado).toBe(true)
+  })
+
+  it('prefixado rende (1 + taxa)^(1/252) por dia útil', () => {
+    const p = calcularPosicao({ tipo: 'cdb', indexador: 'pre', taxa: 12, vencimento: null }, [mov('aporte', 1000, null, { data: '2026-03-02' })], null, cal)
+    expect(p.valorAtual).toBeCloseTo(1000 * 1.12 ** (2 / 252), 6)
+  })
+
+  it('cada aplicação de CDB pode ter vencimento próprio e para de render nele', () => {
+    const movs = [
+      mov('aporte', 1000, null, { data: '2026-01-05', vencimento: '2026-03-02' }),
+      mov('aporte', 1000, null, { data: '2026-01-05' }),
+    ]
+    const p = calcularPosicao({ tipo: 'cdb', indexador: 'cdi', taxa: 100, vencimento: null }, movs, null, cal)
+    expect(p.lotes[0].saldo).toBeCloseTo(1000 * 1.0005 ** 2)
+    expect(p.lotes[1].saldo).toBeCloseTo(1000 * 1.0005 ** 4)
+  })
+
+  it('resgate sai das aplicações mais antigas primeiro (PEPS)', () => {
+    const movs = [
+      mov('aporte', 1000, null, { data: '2026-01-05' }),
+      mov('aporte', 1000, null, { data: '2026-02-02' }),
+      mov('resgate', 1200, null, { data: '2026-03-03' }),
+    ]
+    const p = calcularPosicao({ tipo: 'cdb', indexador: 'nenhum', taxa: null, vencimento: null }, movs, null, cal)
+    expect(p.lotes[0].saldo).toBe(0)
+    expect(p.lotes[1].saldo).toBeCloseTo(800)
+    expect(p.lotes[1].custo).toBeCloseTo(800)
+  })
+})
+
+describe('tributação por aplicação', () => {
+  it('IR regressivo pelo prazo de cada aplicação', () => {
+    expect(aliquotaIR(100)).toBe(0.225)
+    expect(aliquotaIR(181)).toBe(0.2)
+    expect(aliquotaIR(400)).toBe(0.175)
+    expect(aliquotaIR(721)).toBe(0.15)
+    const t = tributacaoDoLote({ data: '2026-01-01', saldo: 1100, custo: 1000 }, '2026-04-11', false)
+    expect(t.dias).toBe(100)
+    expect(t.ir).toBeCloseTo(22.5)
+    expect(t.liquido).toBeCloseTo(1077.5)
+  })
+
+  it('IOF nos primeiros 30 dias, antes do IR', () => {
+    const t = tributacaoDoLote({ data: '2026-01-01', saldo: 1010, custo: 1000 }, '2026-01-11', false)
+    expect(t.dias).toBe(10)
+    expect(t.iof).toBeCloseTo(6.6) // 66% de 10
+    expect(t.ir).toBeCloseTo((10 - 6.6) * 0.225)
+  })
+
+  it('LCI/LCA é isenta para pessoa física', () => {
+    const t = tributacaoDoLote({ data: '2026-01-01', saldo: 1100, custo: 1000 }, '2026-02-01', true)
+    expect(t.ir).toBe(0)
+    expect(t.iof).toBe(0)
+    expect(t.liquido).toBe(1100)
   })
 })
