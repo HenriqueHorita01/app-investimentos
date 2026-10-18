@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCarteira, cdiDesde, criarMovimentacao, salvarCotacaoManual, type NovaMovimentacao } from '../lib/dados'
 import { ajusteAplicacaoAntiga, disponivel, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
-import { ehRendaVariavel, NOME_TIPO, OBS_PROVENTOS_ANTERIORES, rotuloAtivo } from '../lib/tipos'
+import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, OBS_PROVENTOS_ANTERIORES, rotuloAtivo, type Indexador } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, Erro, Titulo } from '../components/ui'
 
@@ -32,6 +32,12 @@ export default function Lancamento() {
   /** Renda fixa: aplicação feita antes de usar o app, que já tem rendimento. */
   const [antiga, setAntiga] = useState(false)
   const [saldoAtual, setSaldoAtual] = useState('')
+  /** Renda fixa: condições desta aplicação (começam iguais às do ativo). */
+  const [condTaxa, setCondTaxa] = useState('')
+  const [condIndexador, setCondIndexador] = useState<Indexador>('cdi')
+  const [condVenc, setCondVenc] = useState('')
+  const [condLiquidez, setCondLiquidez] = useState('')
+  const [condCarencia, setCondCarencia] = useState('')
   /** Renda variável: posição antiga — cotação de hoje e dividendos já recebidos. */
   const [cotacaoAtual, setCotacaoAtual] = useState('')
   const [dividendosAnteriores, setDividendosAnteriores] = useState('')
@@ -57,6 +63,16 @@ export default function Lancamento() {
     if (!ativoId && ativos.length) setAtivoId(ativos[0].id)
   }, [ativos, ativoId])
 
+  // Renda fixa: as condições da aplicação começam iguais às do ativo.
+  useEffect(() => {
+    if (!ativo || ehRendaVariavel(ativo.tipo)) return
+    setCondTaxa(ativo.taxa != null ? String(ativo.taxa).replace('.', ',') : '')
+    setCondIndexador(ativo.indexador === 'nenhum' ? 'cdi' : ativo.indexador)
+    setCondVenc(ativo.vencimento ?? '')
+    setCondLiquidez(ativo.liquidez ?? '')
+    setCondCarencia('')
+  }, [ativo])
+
   // Dividendo: sugere a quantidade de cotas atual.
   useEffect(() => {
     if (aba === 'dividendo' && ativo && rv && !qtd) setQtd(String(ativo.posicao.quantidade).replace('.', ','))
@@ -79,6 +95,14 @@ export default function Lancamento() {
   const cotacaoN = posicaoAntiga && qtdN > 0 && valorAtualTotalN > 0 ? valorAtualTotalN / qtdN : NaN
   const dividendosN = lerNumero(dividendosAnteriores)
   const valorAtualAntiga = posicaoAntiga && valorAtualTotalN > 0 ? arred2(valorAtualTotalN) : 0
+  const condicoesDiferentes =
+    !!ativo &&
+    !rv &&
+    ((condTaxa.trim() !== '' && lerNumero(condTaxa) !== ativo.taxa) ||
+      condIndexador !== (ativo.indexador === 'nenhum' ? 'cdi' : ativo.indexador) ||
+      (condVenc || null) !== (ativo.vencimento ?? null) ||
+      !!condCarencia ||
+      condLiquidez.trim() !== (ativo.liquidez ?? ''))
   const nomeDestino = chaveDestino === LIVRE ? 'em "Investido"' : `em "${nomeDoDestino(destino)}"`
 
   async function salvar(e: FormEvent) {
@@ -108,7 +132,19 @@ export default function Lancamento() {
     setSalvando(true)
     try {
       const objetivo_id = usaDestino && destino ? destino : null
-      const principal = {
+      // Renda fixa: grava só as condições que diferem das do ativo (o resto herda).
+      const taxaN = condTaxa.trim() ? lerNumero(condTaxa) : null
+      const condicoes =
+        !rv && aba === 'aporte'
+          ? {
+              taxa: taxaN != null && !Number.isNaN(taxaN) && taxaN !== ativo.taxa ? taxaN : null,
+              indexador: condIndexador !== ativo.indexador ? condIndexador : null,
+              vencimento: condVenc && condVenc !== ativo.vencimento ? condVenc : null,
+              liquidez: condLiquidez.trim() && condLiquidez.trim() !== (ativo.liquidez ?? '') ? condLiquidez.trim() : null,
+              carencia: condCarencia || null,
+            }
+          : {}
+      const principal: NovaMovimentacao = {
         ativo_id: ativo.id,
         data,
         tipo: aba,
@@ -117,14 +153,24 @@ export default function Lancamento() {
         valor_total: total,
         observacao: null,
         objetivo_id,
+        ...condicoes,
       }
       const lista: NovaMovimentacao[] = [principal]
       // Renda fixa antiga: aporte na data da aplicação + ajuste HOJE com a diferença entre o
       // saldo informado e o que o CDI já explica (não conta o rendimento duas vezes).
       if (comRendimentoAnterior) {
-        const aj = ajusteAplicacaoAntiga(ativo, data, total, saldoN, await cdiDesde(data), hojeSP())
+        const aj = ajusteAplicacaoAntiga(ativo, data, total, saldoN, await cdiDesde(data), hojeSP(), condicoes, dados?.ipca)
         if (aj.valor !== 0) {
-          lista.push({ ...principal, data: aj.data, tipo: 'ajuste', valor_total: aj.valor, observacao: 'Rendimento anterior ao cadastro' })
+          lista.push({
+            ativo_id: ativo.id,
+            data: aj.data,
+            tipo: 'ajuste',
+            quantidade: null,
+            preco_unitario: null,
+            valor_total: aj.valor,
+            observacao: 'Rendimento anterior ao cadastro',
+            objetivo_id,
+          })
         }
       }
       // Ação/FII antigo: aporte pelo preço médio + dividendos já recebidos.
@@ -279,8 +325,44 @@ export default function Lancamento() {
               {comRendimentoAnterior && rendimentoAnterior !== 0 && (
                 <div className="text-xs text-texto-2">
                   Rendimento até hoje: <span className={rendimentoAnterior > 0 ? 'text-positivo' : 'text-negativo'}>{formatarBRL(rendimentoAnterior)}</span>. A
-                  partir de hoje o app calcula pelo CDI.
+                  partir de hoje o app calcula pela taxa desta aplicação.
                 </div>
+              )}
+              {aba === 'aporte' && (
+                <details className="rounded-xl bg-fundo p-3" open={condicoesDiferentes}>
+                  <summary className="cursor-pointer text-[13px] font-bold">
+                    Condições desta aplicação {condicoesDiferentes ? '· alteradas' : `· ${descreverTaxa({ indexador: condIndexador, taxa: lerNumero(condTaxa) || null }) || 'iguais ao ativo'}`}
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <div className="text-xs text-texto-2">
+                      Cada compra pode ter taxa, vencimento e liquidez próprios (ex.: Tesouro IPCA+ comprado em meses diferentes).
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Campo id="c-idx" rotulo="Indexador">
+                        <select id="c-idx" className="campo !py-2.5 text-sm" value={condIndexador} onChange={(e) => setCondIndexador(e.target.value as Indexador)}>
+                          {INDEXADORES.map((i) => (
+                            <option key={i.id} value={i.id}>{i.nome}</option>
+                          ))}
+                        </select>
+                      </Campo>
+                      <Campo id="c-taxa" rotulo={INDEXADORES.find((i) => i.id === condIndexador)?.rotuloTaxa ?? 'Taxa'}>
+                        <input id="c-taxa" className="campo !py-2.5 font-mono" inputMode="decimal" value={condTaxa} onChange={(e) => setCondTaxa(e.target.value)} />
+                      </Campo>
+                      <Campo id="c-venc" rotulo="Vencimento">
+                        <input id="c-venc" type="date" className="campo !px-2 !py-2.5 !text-sm" value={condVenc} onChange={(e) => setCondVenc(e.target.value)} />
+                      </Campo>
+                      <Campo id="c-car" rotulo="Carência até (opcional)">
+                        <input id="c-car" type="date" className="campo !px-2 !py-2.5 !text-sm" value={condCarencia} onChange={(e) => setCondCarencia(e.target.value)} />
+                      </Campo>
+                    </div>
+                    <Campo id="c-liq" rotulo="Liquidez">
+                      <input id="c-liq" className="campo !py-2.5" placeholder="diária, no vencimento, D+30…" value={condLiquidez} onChange={(e) => setCondLiquidez(e.target.value)} />
+                    </Campo>
+                    <div className="text-xs text-texto-2">
+                      Tributação: {ativo?.tipo === 'lci_lca' ? 'LCI/LCA é isenta de IR para pessoa física.' : 'IR regressivo pelo prazo desta aplicação (22,5% até 180 dias … 15% acima de 720) e IOF nos primeiros 30 dias.'}
+                    </div>
+                  </div>
+                </details>
               )}
             </>
           )}
