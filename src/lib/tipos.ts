@@ -1,3 +1,5 @@
+import type { ConfigProgressiva } from './progressiva'
+
 export type TipoAtivo = 'fii' | 'acao' | 'cdb' | 'lci_lca' | 'tesouro' | 'etf' | 'outro'
 export type Indexador = 'cdi' | 'ipca' | 'pre' | 'selic' | 'nenhum'
 export type TipoMovimentacao = 'aporte' | 'resgate' | 'dividendo' | 'jcp' | 'amortizacao' | 'ajuste'
@@ -33,6 +35,10 @@ export interface Ativo {
   liquido_manual: number | null
   liquido_manual_em: string | null
   liquido_manual_assinatura: string | null
+  // ---- Rentabilidade progressiva (ex.: CDB Neon). null = convencional ----
+  progressiva: ConfigProgressiva | null
+  /** Carência em dias corridos a partir de cada aplicação. */
+  carencia_dias: number | null
 }
 
 export interface CategoriaCarteira {
@@ -63,6 +69,8 @@ export interface Movimentacao {
   vencimento?: string | null
   liquidez?: string | null
   carencia?: string | null
+  /** Resgate de uma aplicação específica (id do aporte). null = mais antigas primeiro. */
+  aplicacao_id?: string | null
 }
 
 export interface Objetivo {

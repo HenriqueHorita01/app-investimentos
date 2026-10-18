@@ -26,6 +26,8 @@ function ativo(extra: Partial<Ativo>): Ativo {
     liquido_manual: null,
     liquido_manual_em: null,
     liquido_manual_assinatura: null,
+    progressiva: null,
+    carencia_dias: null,
     ...extra,
   }
 }

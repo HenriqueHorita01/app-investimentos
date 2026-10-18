@@ -1,4 +1,5 @@
 import type { Ativo, CdiDia, Indexador, Movimentacao, Objetivo } from './tipos'
+import { faixaEm, somarDiasCorridos, type ConfigProgressiva } from './progressiva'
 import { ehRendaVariavel } from './tipos'
 
 /** Chave do destino "livre" (lançamentos sem objetivo). */
@@ -62,7 +63,32 @@ export interface Lote {
   carencia: string | null
   /** Usou IPCA projetado em algum mês ainda não divulgado. */
   ipcaEstimado: boolean
+  /** Data a partir da qual pode ser resgatada (carência), se houver. */
+  disponivelEm: string | null
+  /** Último dia útil com rendimento calculado (realizado). */
+  calculadoAte: string | null
+  /** Rentabilidade progressiva: estado da aplicação. */
+  progressiva: EstadoProgressivo | null
 }
+
+/** Estado de uma aplicação com rentabilidade progressiva. */
+export interface EstadoProgressivo {
+  cfg: ConfigProgressiva
+  /** Início da contagem de tempo (data da aplicação, ou do 1º aporte se compartilhada). */
+  inicioContagem: string
+  /** Cotas da aplicação: saldo = cotas × valor da cota na faixa vigente. */
+  cotas: number
+  /** Valor acumulado de R$ 1 desde o início da contagem, em CADA faixa (retroativo). */
+  acumuladoPorFaixa: number[]
+  /** Valor acumulado com a taxa de cada dia (não retroativo). */
+  acumuladoProspectivo: number
+  /** Faixa vigente no último dia calculado. */
+  faixa: number
+}
+
+/** Tipo de ativo usado no cálculo de posição (campos extras são opcionais). */
+export type AtivoCalculo = Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'> &
+  Partial<Pick<Ativo, 'progressiva' | 'carencia_dias'>>
 
 /** IPCA mensal: "AAAA-MM" → variação % no mês. */
 export type SerieIpca = Map<string, number>
@@ -77,7 +103,7 @@ function ordenar(movs: Movimentacao[]) {
 }
 
 export function calcularPosicao(
-  ativo: Pick<Ativo, 'tipo' | 'indexador' | 'taxa' | 'vencimento'>,
+  ativo: AtivoCalculo,
   movs: Movimentacao[],
   ultimaCotacao: number | null,
   cdi: CdiDia[] = [],
@@ -145,7 +171,7 @@ function rendaVariavel(movs: Movimentacao[], ultimaCotacao: number | null, prove
  * fica no objetivo. O CDI do dia D vale para o dinheiro aplicado até D (inclusive).
  */
 function rendaFixa(
-  ativo: Pick<Ativo, 'indexador' | 'taxa' | 'vencimento'>,
+  ativo: Omit<AtivoCalculo, 'tipo'>,
   movs: Movimentacao[],
   cdi: CdiDia[],
   ipca: SerieIpca,
@@ -153,6 +179,8 @@ function rendaFixa(
 ): Posicao {
   const lotes: Lote[] = []
   let inconsistente = false
+  const cfg = ativo.progressiva ?? null
+  const primeiroAporte = movs.find((m) => m.tipo === 'aporte')?.data ?? null
 
   const novoLote = (m: Movimentacao, destino: string, aplicado: number, saldo: number): Lote => {
     const l: Lote = {
@@ -170,9 +198,26 @@ function rendaFixa(
       liquidez: m.liquidez ?? null,
       carencia: m.carencia ?? null,
       ipcaEstimado: false,
+      disponivelEm: m.carencia ?? (ativo.carencia_dias ? somarDiasCorridos(m.data, ativo.carencia_dias) : null),
+      calculadoAte: null,
+      progressiva: cfg
+        ? {
+            cfg,
+            inicioContagem: cfg.contagem === 'compartilhada' && primeiroAporte ? primeiroAporte : m.data,
+            cotas: saldo,
+            acumuladoPorFaixa: cfg.faixas.map(() => 1),
+            acumuladoProspectivo: 1,
+            faixa: 0,
+          }
+        : null,
     }
     lotes.push(l)
     return l
+  }
+
+  /** Progressiva: depois de mexer no saldo (resgate/ajuste), ajusta as cotas. */
+  const sincronizar = (l: Lote) => {
+    if (l.progressiva) l.progressiva.cotas = l.saldo / valorDaCota(l.progressiva)
   }
 
   const aplicar = (m: Movimentacao) => {
@@ -181,15 +226,18 @@ function rendaFixa(
     if (m.tipo === 'aporte') {
       novoLote(m, d, valor(m), valor(m))
     } else if (m.tipo === 'resgate' || m.tipo === 'amortizacao') {
-      // PEPS: sai primeiro das aplicações mais antigas; o custo cai na proporção.
+      // De uma aplicação específica, se indicada; senão PEPS (as mais antigas primeiro).
+      // O custo cai na proporção do saldo resgatado.
       let r = valor(m)
-      for (const l of doDestino) {
+      const alvo = m.aplicacao_id ? doDestino.filter((l) => l.movId === m.aplicacao_id) : []
+      for (const l of alvo.length ? alvo : doDestino) {
         if (r <= EPS) break
         if (l.saldo <= EPS) continue
         const tirar = Math.min(r, l.saldo)
         l.custo -= l.custo * (tirar / l.saldo)
         l.saldo -= tirar
         if (l.saldo < EPS) l.saldo = 0
+        sincronizar(l)
         r -= tirar
       }
       if (r > EPS) inconsistente = true
@@ -200,9 +248,15 @@ function rendaFixa(
       const doLote = doDestino.find((l) => l.criadoEm === m.criado_em)
       const comSaldo = doDestino.filter((l) => l.saldo > EPS)
       const total = comSaldo.reduce((s, l) => s + l.saldo, 0)
-      if (doLote) doLote.saldo += v
-      else if (total > 0) for (const l of comSaldo) l.saldo += v * (l.saldo / total)
-      else novoLote(m, d, 0, v)
+      if (doLote) {
+        doLote.saldo += v
+        sincronizar(doLote)
+      } else if (total > 0) {
+        for (const l of comSaldo) {
+          l.saldo += v * (l.saldo / total)
+          sincronizar(l)
+        }
+      } else novoLote(m, d, 0, v)
       if (doDestino.some((l) => l.saldo < -EPS)) inconsistente = true
     }
   }
@@ -214,6 +268,12 @@ function rendaFixa(
       while (i < movs.length && movs[i].data <= dia.data) aplicar(movs[i++])
       for (const l of lotes) {
         if (l.saldo <= 0 || (l.vencimento && dia.data >= l.vencimento)) continue
+        l.calculadoAte = dia.data
+        if (l.progressiva) {
+          acumularProgressivo(l.progressiva, dia)
+          l.saldo = l.progressiva.cotas * valorDaCota(l.progressiva)
+          continue
+        }
         const f = fatorDoDia(l, dia, ipca)
         l.saldo *= f.fator
         if (f.ipcaEstimado) l.ipcaEstimado = true
@@ -245,15 +305,64 @@ function rendaFixa(
     proventos,
     retornoTotal: variacao + proventos,
     semCotacao: false,
-    semRendimento: !lotes.some(rendeAutomatico) && !(lotes.length === 0 && rendeAutomatico({ indexador: ativo.indexador, taxa: ativo.taxa })),
+    semRendimento: !lotes.some(rendeAutomatico) && !(lotes.length === 0 && rendeAutomatico({ indexador: ativo.indexador, taxa: ativo.taxa, progressiva: cfg })),
     porDestino,
     inconsistente,
     lotes,
   }
 }
 
+/**
+ * Um dia útil numa aplicação progressiva (CDI): acumula R$ 1 em TODAS as faixas desde o
+ * início da contagem. Na faixa vigente, o valor da cota é o acumulado dessa faixa desde o
+ * começo — ao mudar de faixa, todo o rendimento passa a ser o da nova taxa (retroativo),
+ * sem somar o ganho antigo e sem tratar a diferença como aporte.
+ */
+function acumularProgressivo(e: EstadoProgressivo, dia: CdiDia) {
+  const cdiDia = Number(dia.taxa_dia) / 100
+  e.faixa = faixaEm(e.cfg, e.inicioContagem, dia.data)
+  e.cfg.faixas.forEach((f, k) => (e.acumuladoPorFaixa[k] *= 1 + cdiDia * (f.percentual / 100)))
+  e.acumuladoProspectivo *= 1 + cdiDia * (e.cfg.faixas[e.faixa].percentual / 100)
+}
+
+/** Valor atual de 1 cota da aplicação progressiva (faixa vigente). */
+export function valorDaCota(e: EstadoProgressivo): number {
+  return e.cfg.retroativa ? e.acumuladoPorFaixa[e.faixa] : e.acumuladoProspectivo
+}
+
+/** % do CDI vigente de uma aplicação (progressiva: da faixa atual). */
+export function percentualVigente(l: Pick<Lote, 'taxa' | 'progressiva'>): number | null {
+  return l.progressiva ? l.progressiva.cfg.faixas[l.progressiva.faixa].percentual : l.taxa
+}
+
+/**
+ * PROJEÇÃO (não realizado): saldo bruto da aplicação em `ate`, supondo o CDI diário
+ * `cdiDiaHipotese` (% ao dia) daqui em diante. Progressiva retroativa: usa a faixa que
+ * estará vigente em `ate`, recalculando desde o início.
+ */
+export function projetarSaldo(l: Lote, ate: string, cdiDiaHipotese: number): number {
+  if (l.saldo <= 0) return 0
+  const desde = l.calculadoAte ?? somarDiasCorridos(l.data, -1)
+  const fim = l.vencimento && l.vencimento < ate ? l.vencimento : ate
+  const dias = fim > desde ? diasUteisEntre(desde, fim) : 0
+  const c = cdiDiaHipotese / 100
+  if (l.progressiva) {
+    const e = l.progressiva
+    const k = faixaEm(e.cfg, e.inicioContagem, fim)
+    const p = e.cfg.faixas[k].percentual / 100
+    if (e.cfg.retroativa) return e.cotas * e.acumuladoPorFaixa[k] * (1 + c * p) ** dias
+    return e.cotas * e.acumuladoProspectivo * (1 + c * p) ** dias
+  }
+  if (!rendeAutomatico(l) || l.indexador === 'ipca') {
+    // IPCA+: projeta só o juro real; sem hipótese de IPCA aqui.
+    return l.indexador === 'ipca' ? l.saldo * (1 + Number(l.taxa ?? 0) / 100) ** (dias / 252) : l.saldo
+  }
+  return l.saldo * fatorDoDia(l, { data: fim, taxa_dia: cdiDiaHipotese }, new Map()).fator ** dias
+}
+
 /** O app calcula o rendimento desta aplicação sozinho? (CDI precisa de taxa.) */
-export function rendeAutomatico(l: Pick<Lote, 'indexador' | 'taxa'>): boolean {
+export function rendeAutomatico(l: Pick<Lote, 'indexador' | 'taxa'> & { progressiva?: unknown }): boolean {
+  if (l.progressiva) return true
   if (l.indexador === 'cdi') return Number(l.taxa) > 0
   return l.indexador === 'ipca' || l.indexador === 'pre' || l.indexador === 'selic'
 }
