@@ -16,10 +16,11 @@ import {
   type EdicaoAtivo,
   type EdicaoMovimentacao,
 } from '../lib/dados'
-import { ajustesParaSaldo } from '../lib/calculos'
+import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { partesDoAtivo } from '../lib/objetivos'
 import { BarraDestinos } from '../components/BarraDestinos'
+import { ehIsenta, ListaAplicacoes, totaisDosLotes } from '../components/Aplicacoes'
 import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, rotuloAtivo, type Indexador, type Movimentacao, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
 import { Campo, Cartao, Carregando, corSinal, Erro } from '../components/ui'
@@ -128,11 +129,15 @@ export default function Ativo() {
           </div>
           <div className="text-xs text-texto-2">
             {p.semRendimento
-              ? 'Cálculo automático só para CDB atrelado ao CDI. Por enquanto o saldo é o valor aplicado.'
-              : `Estimativa pelo CDI diário do Banco Central${dados.cdiAte ? `, atualizado até ${formatarData(dados.cdiAte)}` : ''}. Sem IR; o extrato do banco é a referência final.`}
+              ? 'Sem indexador (ou % do CDI sem taxa): o saldo é o valor aplicado. Use "Corrigir saldo pelo extrato".'
+              : `Estimativa dia útil a dia útil${dados.cdiAte ? `, CDI até ${formatarData(dados.cdiAte)}` : ''}${
+                  p.lotes.some((l) => l.indexador === 'ipca') && dados.ipcaAte ? `, IPCA até ${dados.ipcaAte.split('-').reverse().join('/')}` : ''
+                }. O extrato do banco é a referência final.`}
           </div>
         </Cartao>
       )}
+
+      {!rv && p.lotes.length > 0 && <CartaoAplicacoes a={a} dados={dados} />}
 
       {!rv && a.movimentacoes.length > 0 && <FormCorrigirSaldo a={a} carteira={dados} aoSalvar={recarregar} />}
 
@@ -302,6 +307,45 @@ function EditarAtivo({ a, aoSalvar, aoCancelar }: { a: AtivoComPosicao; aoSalvar
           </button>
         </div>
       </form>
+    </Cartao>
+  )
+}
+
+function CartaoAplicacoes({ a, dados }: { a: AtivoComPosicao; dados: Carteira }) {
+  const hoje = hojeSP()
+  const [encerradas, setEncerradas] = useState(false)
+  const ativos = a.posicao.lotes.filter((l) => l.saldo > 0.005)
+  const t = totaisDosLotes(a.posicao.lotes, hoje, ehIsenta(a.tipo))
+  const nomeDestino = (d: string) =>
+    d === LIVRE ? 'Investido' : d === dados.reserva.id ? 'Reserva' : (dados.objetivos.find((o) => o.id === d)?.nome ?? 'Objetivo')
+  return (
+    <Cartao className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between">
+        <div className="text-sm font-bold">Aplicações ({ativos.length})</div>
+        {a.posicao.lotes.length > ativos.length && (
+          <button type="button" className="text-xs font-bold text-texto-2" onClick={() => setEncerradas(!encerradas)}>
+            {encerradas ? 'Esconder encerradas' : 'Ver encerradas'}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <div className="text-texto-2">Bruto</div>
+          <div className="font-mono">{formatarBRL(t.bruto)}</div>
+        </div>
+        <div>
+          <div className="text-texto-2">{ehIsenta(a.tipo) ? 'IR' : 'IR + IOF (estim.)'}</div>
+          <div className="font-mono">{ehIsenta(a.tipo) ? 'isento' : `− ${formatarBRL(t.impostos)}`}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-texto-2">Líquido estimado</div>
+          <div className="font-mono font-bold">{formatarBRL(t.liquido)}</div>
+        </div>
+      </div>
+      <ListaAplicacoes lotes={a.posicao.lotes} tipo={a.tipo} hoje={hoje} nomeDestino={nomeDestino} mostrarEncerradas={encerradas} />
+      <div className="text-[11px] text-texto-2">
+        Toque numa aplicação para ver o IR do prazo dela. Cada compra tem a sua alíquota; resgates saem das mais antigas primeiro.
+      </div>
     </Cartao>
   )
 }
@@ -702,6 +746,13 @@ function EditarLancamento({
   const [preco, setPreco] = useState(br(m.preco_unitario))
   const [valor, setValor] = useState(br(m.valor_total))
   const [obs, setObs] = useState(m.observacao ?? '')
+  // Renda fixa: condições desta aplicação (vazias = herdam do ativo).
+  const ehAplicacaoRf = !rv && m.tipo === 'aporte'
+  const [cTaxa, setCTaxa] = useState(br(m.taxa ?? a.taxa ?? null))
+  const [cIdx, setCIdx] = useState<Indexador>((m.indexador ?? (a.indexador === 'nenhum' ? 'cdi' : a.indexador)) as Indexador)
+  const [cVenc, setCVenc] = useState(m.vencimento ?? a.vencimento ?? '')
+  const [cLiq, setCLiq] = useState(m.liquidez ?? '')
+  const [cCar, setCCar] = useState(m.carencia ?? '')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
@@ -731,6 +782,16 @@ function EditarLancamento({
         return setErro(permiteNegativo ? 'Informe o valor (use negativo para reduzir o saldo).' : 'Informe o valor.')
       }
       campos = { data, valor_total: total }
+      if (ehAplicacaoRf) {
+        const t = cTaxa.trim() ? lerNumero(cTaxa) : null
+        if (t != null && Number.isNaN(t)) return setErro('Taxa inválida.')
+        // Grava só o que difere do ativo; igual ao ativo = herda (null).
+        campos.taxa = t != null && t !== a.taxa ? t : null
+        campos.indexador = cIdx !== a.indexador ? cIdx : null
+        campos.vencimento = cVenc && cVenc !== a.vencimento ? cVenc : null
+        campos.liquidez = cLiq.trim() || null
+        campos.carencia = cCar || null
+      }
     }
     campos.observacao = obs.trim() || null
 
@@ -777,6 +838,31 @@ function EditarLancamento({
         <Campo id={`ed-valor-${m.id}`} rotulo={permiteNegativo ? 'Valor (negativo para reduzir o saldo)' : 'Valor'}>
           <input id={`ed-valor-${m.id}`} className="campo font-mono" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
         </Campo>
+      )}
+      {ehAplicacaoRf && (
+        <div className="grid grid-cols-2 gap-2">
+          <Campo id={`ed-idx-${m.id}`} rotulo="Indexador">
+            <select id={`ed-idx-${m.id}`} className="campo !py-2.5 text-sm" value={cIdx} onChange={(e) => setCIdx(e.target.value as Indexador)}>
+              {INDEXADORES.map((i) => (
+                <option key={i.id} value={i.id}>{i.nome}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo id={`ed-taxa-${m.id}`} rotulo={INDEXADORES.find((i) => i.id === cIdx)?.rotuloTaxa ?? 'Taxa'}>
+            <input id={`ed-taxa-${m.id}`} className="campo !py-2.5 font-mono" inputMode="decimal" value={cTaxa} onChange={(e) => setCTaxa(e.target.value)} />
+          </Campo>
+          <Campo id={`ed-venc-${m.id}`} rotulo="Vencimento">
+            <input id={`ed-venc-${m.id}`} type="date" className="campo !px-2 !py-2.5 !text-sm" value={cVenc} onChange={(e) => setCVenc(e.target.value)} />
+          </Campo>
+          <Campo id={`ed-car-${m.id}`} rotulo="Carência até">
+            <input id={`ed-car-${m.id}`} type="date" className="campo !px-2 !py-2.5 !text-sm" value={cCar} onChange={(e) => setCCar(e.target.value)} />
+          </Campo>
+          <div className="col-span-2">
+            <Campo id={`ed-liq-${m.id}`} rotulo="Liquidez">
+              <input id={`ed-liq-${m.id}`} className="campo !py-2.5" placeholder="diária, no vencimento, D+30…" value={cLiq} onChange={(e) => setCLiq(e.target.value)} />
+            </Campo>
+          </div>
+        </div>
       )}
       <Campo id={`ed-obs-${m.id}`} rotulo="Observação (opcional)">
         <input id={`ed-obs-${m.id}`} className="campo" value={obs} onChange={(e) => setObs(e.target.value)} />
