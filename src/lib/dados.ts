@@ -100,6 +100,7 @@ export async function carregarCarteira(): Promise<Carteira> {
     preco_referencia: num(a.preco_referencia),
     aplicacao_minima: num(a.aplicacao_minima),
     incremento_minimo: num(a.incremento_minimo),
+    liquido_manual: num(a.liquido_manual),
   }))
   const todosObjetivos = ((objetivosR.data ?? []) as Objetivo[]).map((o) => ({ ...o, valor_alvo: num(o.valor_alvo) }))
   const objetivos = todosObjetivos.filter((o) => o.tipo !== 'reserva_emergencia')
@@ -358,4 +359,29 @@ export async function salvarPercentuais(itens: { id: string; percentual_alvo: nu
     const { error } = await supabase.from('ativos').update({ percentual_alvo: i.percentual_alvo }).eq('id', i.id)
     erro(error)
   }
+}
+
+// ============ Saldo líquido manual ============
+
+/**
+ * Grava o saldo líquido informado pelo usuário (ex.: "disponível para resgate" do banco)
+ * junto com a data e a assinatura atual dos lançamentos. Não altera nenhum lançamento.
+ * `valor = null` restaura o cálculo automático.
+ */
+export async function salvarLiquidoManual(ativoId: string, valor: number | null, assinatura: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('ativos')
+    .update({
+      liquido_manual: valor,
+      liquido_manual_em: valor == null ? null : new Date().toISOString(),
+      liquido_manual_assinatura: valor == null ? null : assinatura,
+    })
+    .eq('id', ativoId)
+  erro(error)
+}
+
+/** Mantém o valor manual, marcando que ele vale para os lançamentos atuais. */
+export async function confirmarLiquidoManual(ativoId: string, assinatura: string): Promise<void> {
+  const { error } = await supabase.from('ativos').update({ liquido_manual_assinatura: assinatura }).eq('id', ativoId)
+  erro(error)
 }

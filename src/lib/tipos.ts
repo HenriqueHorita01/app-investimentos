@@ -29,6 +29,10 @@ export interface Ativo {
   liquidez: string | null
   /** Renda variável: quantidade mínima por compra (1 = fracionário). */
   lote: number
+  // ---- Saldo líquido informado manualmente (substitui o calculado na exibição) ----
+  liquido_manual: number | null
+  liquido_manual_em: string | null
+  liquido_manual_assinatura: string | null
 }
 
 export interface CategoriaCarteira {

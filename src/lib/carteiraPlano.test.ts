@@ -23,6 +23,9 @@ function ativo(extra: Partial<Ativo>): Ativo {
     incremento_minimo: null,
     liquidez: null,
     lote: 1,
+    liquido_manual: null,
+    liquido_manual_em: null,
+    liquido_manual_assinatura: null,
     ...extra,
   }
 }
