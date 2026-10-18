@@ -20,6 +20,7 @@ import { ajustesParaSaldo, LIVRE } from '../lib/calculos'
 import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { partesDoAtivo } from '../lib/objetivos'
 import { BarraDestinos } from '../components/BarraDestinos'
+import { CartaoLiquido } from '../components/Liquido'
 import { ehIsenta, ListaAplicacoes, totaisDosLotes } from '../components/Aplicacoes'
 import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, rotuloAtivo, type Indexador, type Movimentacao, type TipoAtivo } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
@@ -136,6 +137,8 @@ export default function Ativo() {
           </div>
         </Cartao>
       )}
+
+      {a.movimentacoes.length > 0 && <CartaoLiquido a={a} aoMudar={recarregar} />}
 
       {!rv && p.lotes.length > 0 && <CartaoAplicacoes a={a} dados={dados} />}
 
