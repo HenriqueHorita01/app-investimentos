@@ -51,7 +51,7 @@ export default function Reserva() {
         ...a,
         parte,
         fracao: a.posicao.valorAtual > 0 ? parte.valorAtual / a.posicao.valorAtual : 1,
-        mes: rendimentoNoMes(a, movsReserva, carteira.cdi, hoje, cdiAtual),
+        mes: rendimentoNoMes(a, movsReserva, carteira.cdi, hoje, cdiAtual, carteira.ipca),
       }
     })
   const saldo = ativos.reduce((s, a) => s + a.parte.valorAtual, 0)

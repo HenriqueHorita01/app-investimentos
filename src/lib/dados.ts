@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import type { Ativo, CategoriaCarteira, CdiDia, Cotacao, Movimentacao, Objetivo, TipoAtivo, TipoMovimentacao } from './tipos'
 import { ehRendaVariavel, rotuloAtivo } from './tipos'
 import { CATEGORIAS_PADRAO } from './carteiraPlano'
-import { calcularPosicao, progressoObjetivos, type Posicao, type ProgressoObjetivo } from './calculos'
+import { calcularPosicao, progressoObjetivos, type Posicao, type ProgressoObjetivo, type SerieIpca } from './calculos'
 
 export interface AtivoComPosicao extends Ativo {
   posicao: Posicao
@@ -24,12 +24,23 @@ export interface Carteira {
   cdiUltimo: number | null
   /** Série usada nos cálculos (para simular alterações antes de gravar). */
   cdi: CdiDia[]
+  /** IPCA mensal ("AAAA-MM" → %), para aplicações IPCA+. */
+  ipca: SerieIpca
+  /** Último mês com IPCA divulgado ("AAAA-MM"). */
+  ipcaAte: string | null
 }
 
 const num = (v: unknown) => (v == null ? null : Number(v))
 
 function normalizarMov(m: Movimentacao): Movimentacao {
-  return { ...m, quantidade: num(m.quantidade), preco_unitario: num(m.preco_unitario), valor_total: Number(m.valor_total) }
+  return { ...m, quantidade: num(m.quantidade), preco_unitario: num(m.preco_unitario), valor_total: Number(m.valor_total), taxa: num(m.taxa) }
+}
+
+/** IPCA mensal inteiro (são poucas linhas). */
+async function carregarIpca(): Promise<SerieIpca> {
+  const { data, error } = await supabase.from('ipca_mensal').select('mes, variacao').order('mes')
+  erro(error)
+  return new Map((data ?? []).map((l) => [String(l.mes).slice(0, 7), Number(l.variacao)]))
 }
 
 function erro(e: { message: string } | null): asserts e is null {
@@ -95,18 +106,20 @@ export async function carregarCarteira(): Promise<Carteira> {
   const reserva = todosObjetivos.find((o) => o.tipo === 'reserva_emergencia') ?? (await criarReserva())
   const movs = movsBrutas.map(normalizarMov)
 
-  // CDI só desde a primeira aplicação em renda fixa atrelada ao CDI.
-  const idsCdi = new Set(ativos.filter((a) => !ehRendaVariavel(a.tipo) && a.indexador === 'cdi').map((a) => a.id))
-  const primeira = movs.find((m) => idsCdi.has(m.ativo_id))?.data
-  const [cot, cdi] = await Promise.all([
+  // Calendário de dias úteis (série do CDI) desde a primeira aplicação em renda fixa:
+  // serve para CDI, prefixado, Selic e IPCA+.
+  const idsRf = new Set(ativos.filter((a) => !ehRendaVariavel(a.tipo)).map((a) => a.id))
+  const primeira = movs.find((m) => idsRf.has(m.ativo_id))?.data
+  const [cot, cdi, ipca] = await Promise.all([
     ultimasCotacoes(ativos.map((a) => a.ticker).filter((t): t is string => !!t)),
     primeira ? cdiDesde(primeira) : Promise.resolve([] as CdiDia[]),
+    carregarIpca(),
   ])
 
   const comPosicao = ativos.map((a) => {
     const c = a.ticker ? (cot.get(a.ticker) ?? null) : null
     const doAtivo = movs.filter((m) => m.ativo_id === a.id)
-    return { ...a, movimentacoes: doAtivo, ultimaCotacao: c, posicao: calcularPosicao(a, doAtivo, c?.fechamento ?? null, cdi) }
+    return { ...a, movimentacoes: doAtivo, ultimaCotacao: c, posicao: calcularPosicao(a, doAtivo, c?.fechamento ?? null, cdi, ipca) }
   })
 
   const usos = comPosicao.map((a) => ({ id: a.id, rotulo: rotuloAtivo(a), posicao: a.posicao }))
@@ -119,6 +132,8 @@ export async function carregarCarteira(): Promise<Carteira> {
     cdiAte: cdiUltR.data?.[0]?.data ?? null,
     cdiUltimo: cdiUltR.data?.[0] ? Number(cdiUltR.data[0].taxa_dia) : null,
     cdi,
+    ipca,
+    ipcaAte: [...ipca.keys()].at(-1) ?? null,
   }
 }
 
@@ -140,8 +155,8 @@ async function criarReserva(): Promise<Objetivo> {
 }
 
 /** Recalcula a posição do ativo com uma lista de lançamentos alterada (para validar antes de gravar). */
-export function simularPosicao(a: AtivoComPosicao, movs: Movimentacao[], cdi: CdiDia[]): Posicao {
-  return calcularPosicao(a, movs, a.ultimaCotacao?.fechamento ?? null, cdi)
+export function simularPosicao(a: AtivoComPosicao, movs: Movimentacao[], cdi: CdiDia[], ipca: SerieIpca = new Map()): Posicao {
+  return calcularPosicao(a, movs, a.ultimaCotacao?.fechamento ?? null, cdi, ipca)
 }
 
 // ============ Ativos ============
@@ -210,6 +225,12 @@ export interface NovaMovimentacao {
   valor_total: number
   observacao: string | null
   objetivo_id: string | null
+  // Renda fixa: condições próprias desta aplicação (vazias = herdam do ativo).
+  taxa?: number | null
+  indexador?: Movimentacao['indexador']
+  vencimento?: string | null
+  liquidez?: string | null
+  carencia?: string | null
 }
 
 /** Grava um ou mais lançamentos de uma vez (tudo ou nada). */
@@ -223,7 +244,12 @@ export async function excluirMovimentacao(id: string): Promise<void> {
   erro(error)
 }
 
-export type EdicaoMovimentacao = Partial<Pick<Movimentacao, 'data' | 'quantidade' | 'preco_unitario' | 'valor_total' | 'observacao' | 'objetivo_id'>>
+export type EdicaoMovimentacao = Partial<
+  Pick<
+    Movimentacao,
+    'data' | 'quantidade' | 'preco_unitario' | 'valor_total' | 'observacao' | 'objetivo_id' | 'taxa' | 'indexador' | 'vencimento' | 'liquidez' | 'carencia'
+  >
+>
 
 export async function atualizarMovimentacao(id: string, campos: EdicaoMovimentacao): Promise<void> {
   const { error } = await supabase.from('movimentacoes').update(campos).eq('id', id)

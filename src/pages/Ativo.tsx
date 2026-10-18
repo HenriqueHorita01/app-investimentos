@@ -471,7 +471,7 @@ function FormCorrigirSaldo({ a, carteira, aoSalvar }: { a: AtivoComPosicao; cart
     const v = lerNumero(saldo)
     if (!(v >= 0)) return setErro('Informe o saldo bruto do extrato.')
     if (data > hojeSP()) return setErro('A data não pode ser no futuro.')
-    const { calculado, ajustes } = ajustesParaSaldo(a, a.movimentacoes, carteira.cdi, data, v)
+    const { calculado, ajustes } = ajustesParaSaldo(a, a.movimentacoes, carteira.cdi, data, v, carteira.ipca)
     if (!ajustes.length) {
       setAviso(`O saldo calculado já é ${formatarBRL(calculado)}. Nada a corrigir.`)
       return
@@ -548,7 +548,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
 
   async function excluir(m: Movimentacao) {
     if (!confirm(`Excluir ${NOME_MOV[m.tipo].toLowerCase()} de ${formatarData(m.data)} (${formatarBRL(m.valor_total)})?`)) return
-    const simulada = simularPosicao(a, a.movimentacoes.filter((x) => x.id !== m.id), carteira.cdi)
+    const simulada = simularPosicao(a, a.movimentacoes.filter((x) => x.id !== m.id), carteira.cdi, carteira.ipca)
     if (simulada.inconsistente) {
       setErro('Excluir este aporte deixaria um resgate sem saldo. Exclua o resgate antes.')
       return
@@ -568,6 +568,7 @@ function Historico({ a, carteira, aoMudar }: { a: AtivoComPosicao; carteira: Car
       a,
       a.movimentacoes.map((x) => (x.id === m.id ? { ...x, objetivo_id: objetivoId } : x)),
       carteira.cdi,
+      carteira.ipca,
     )
     if (simulada.inconsistente) {
       setErro('Não dá para trocar: algum resgate ficaria maior do que o saldo do destino. Ajuste o resgate também.')
@@ -737,6 +738,7 @@ function EditarLancamento({
       a,
       a.movimentacoes.map((x) => (x.id === m.id ? { ...x, ...campos } : x)),
       carteira.cdi,
+      carteira.ipca,
     )
     if (simulada.inconsistente) {
       return setErro('Com esses valores algum resgate ficaria maior do que o saldo disponível. Confira as quantidades e datas.')
