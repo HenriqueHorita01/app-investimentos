@@ -2,9 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { carregarCarteira, cdiDesde, criarMovimentacao, salvarCotacaoManual, type NovaMovimentacao } from '../lib/dados'
 import { ajusteAplicacaoAntiga, disponivel, LIVRE } from '../lib/calculos'
-import { formatarBRL, formatarBRLComSinal, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
+import { formatarBRL, formatarBRLComSinal, formatarData, formatarNumero, formatarPercentual, hojeSP, lerNumero } from '../lib/formato'
 import { descreverTaxa, ehRendaVariavel, INDEXADORES, NOME_TIPO, OBS_PROVENTOS_ANTERIORES, rotuloAtivo, type Indexador } from '../lib/tipos'
 import { useCarregar } from '../lib/useCarregar'
+import { descreverTaxaLote } from '../components/Aplicacoes'
 import { Campo, Cartao, Carregando, Erro, Titulo } from '../components/ui'
 
 type Aba = 'aporte' | 'resgate' | 'dividendo'
@@ -25,6 +26,8 @@ export default function Lancamento() {
   const [ativoId, setAtivoId] = useState(params.get('ativo') ?? '')
   /** '' = Investido; senão, id do objetivo ou da reserva. */
   const [destino, setDestino] = useState(params.get('objetivo') ?? '')
+  // Resgate de renda fixa: aplicação escolhida ('' = mais antigas primeiro).
+  const [aplicacaoId, setAplicacaoId] = useState(params.get('aplicacao') ?? '')
   const [data, setData] = useState(hojeSP())
   const [qtd, setQtd] = useState(params.get('qtd') ?? '')  // pode vir do simulador
   const [preco, setPreco] = useState(params.get('preco') ?? '')  // pode vir do simulador
@@ -104,6 +107,11 @@ export default function Lancamento() {
       !!condCarencia ||
       condLiquidez.trim() !== (ativo.liquidez ?? ''))
   const nomeDestino = chaveDestino === LIVRE ? 'em "Investido"' : `em "${nomeDoDestino(destino)}"`
+  // Aplicações (lotes) que podem ser resgatadas neste destino.
+  const lotesResgate = !rv && aba === 'resgate' && ativo ? ativo.posicao.lotes.filter((l) => l.destino === chaveDestino && l.saldo > 0.005) : []
+  const loteEscolhido = lotesResgate.find((l) => l.movId === aplicacaoId)
+  const emCarenciaEm = (l: (typeof lotesResgate)[number]) => !!l.disponivelEm && data < l.disponivelEm
+  const livreDeCarencia = lotesResgate.filter((l) => !emCarenciaEm(l)).reduce((s, l) => s + l.saldo, 0)
 
   async function salvar(e: FormEvent) {
     e.preventDefault()
@@ -126,6 +134,12 @@ export default function Lancamento() {
       if (comRendimentoAnterior && !(saldoN > 0)) return setErro('Informe o saldo bruto atual (o que aparece no banco).')
       if (aba === 'resgate' && total > disp + 0.005) {
         return setErro(`O saldo ${nomeDestino} é ${formatarBRL(disp)}; o resgate não pode passar disso.`)
+      }
+      if (aba === 'resgate' && loteEscolhido) {
+        if (emCarenciaEm(loteEscolhido)) return setErro(`Essa aplicação está em carência: resgate a partir de ${formatarData(loteEscolhido.disponivelEm!)}.`)
+        if (total > loteEscolhido.saldo + 0.005) return setErro(`O saldo dessa aplicação é ${formatarBRL(loteEscolhido.saldo)}; o resgate não pode passar disso.`)
+      } else if (aba === 'resgate' && lotesResgate.some(emCarenciaEm) && total > livreDeCarencia + 0.005) {
+        return setErro(`Fora da carência há ${formatarBRL(livreDeCarencia)}; o restante ainda não pode ser resgatado.`)
       }
     }
 
@@ -154,6 +168,7 @@ export default function Lancamento() {
         observacao: null,
         objetivo_id,
         ...condicoes,
+        ...(loteEscolhido ? { aplicacao_id: loteEscolhido.movId } : {}),
       }
       const lista: NovaMovimentacao[] = [principal]
       // Renda fixa antiga: aporte na data da aplicação + ajuste HOJE com a diferença entre o
@@ -379,7 +394,7 @@ export default function Lancamento() {
               <label htmlFor="obj" className="rotulo">{aba === 'aporte' ? 'Destino do dinheiro' : 'Resgatar de'}</label>
               <Link to="/objetivos?novo=1&voltar=/lancar" className="text-xs text-positivo">+ Novo objetivo</Link>
             </div>
-            <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setErro(null) }}>
+            <select id="obj" className="campo" value={destino} onChange={(e) => { setDestino(e.target.value); setAplicacaoId(''); setErro(null) }}>
               <option value="">Investido</option>
               {reservaId && <option value={reservaId}>Reserva de emergência</option>}
               {objetivos.length > 0 && (
@@ -401,7 +416,31 @@ export default function Lancamento() {
               <div className="text-xs text-texto-2">Depois dá para dividir o investimento entre vários destinos no detalhe do ativo.</div>
             )}
             {aba === 'resgate' && ativo && (
-              <div className="text-xs text-texto-2">Disponível: {rv ? `${formatarNumero(disp)} cotas` : formatarBRL(disp)}</div>
+              <div className="text-xs text-texto-2">
+                Disponível: {rv ? `${formatarNumero(disp)} cotas` : formatarBRL(disp)}
+                {lotesResgate.some(emCarenciaEm) && ` · fora da carência: ${formatarBRL(livreDeCarencia)}`}
+              </div>
+            )}
+            {lotesResgate.length > 1 && (
+              <>
+                <label htmlFor="apl" className="rotulo pt-2">Aplicação</label>
+                <select id="apl" className="campo" value={aplicacaoId} onChange={(e) => { setAplicacaoId(e.target.value); setErro(null) }}>
+                  <option value="">Mais antigas primeiro (padrão)</option>
+                  {lotesResgate.map((l) => (
+                    <option key={l.movId} value={l.movId} disabled={emCarenciaEm(l)}>
+                      {formatarData(l.data)} · {formatarBRL(l.saldo)} · {descreverTaxaLote(l)}
+                      {emCarenciaEm(l) ? ` · carência até ${formatarData(l.disponivelEm!)}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-texto-2">
+                  {loteEscolhido
+                    ? 'Sai só desta aplicação; as outras mantêm o prazo, a faixa e o IR delas.'
+                    : ativo?.progressiva
+                      ? 'Sem escolha, sai das mais antigas primeiro (menor IR). Atenção: na progressiva, são as que estão nas faixas maiores.'
+                      : 'Sem escolha, o resgate sai das aplicações mais antigas primeiro (menor IR).'}
+                </div>
+              </>
             )}
           </Cartao>
         )}
