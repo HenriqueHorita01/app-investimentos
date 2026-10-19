@@ -11,6 +11,11 @@ Planejamento, simulação e acompanhamento dos aportes de longo prazo, **integra
 - **Percentual de cada ativo**: % da carteira total; os ativos de uma categoria somam o % da categoria (ex.: FIIs 20% = 4 × 5%).
 - **Entrega**: 4 etapas.
 
+## Revisão (19/10/2026)
+- Os aportes **não** seguem o simulador todo mês (nem proporcional nem rebalanceamento de todos os ativos). Por isso **saem do escopo**: botão Confirmar, `carteira_aportes`, `carteira_caixa`, `aporte_id`/`taxas` e o histórico planejado × realizado. As compras continuam sendo lançadas normalmente (link "Lançar" em cada linha do simulador).
+- Da etapa 3 fica só um lembrete no Simulador: dividendos recebidos em "Investido" desde o último aporte, com "Somar ao valor".
+- Etapa 4 (Acompanhamento) feita sem tabelas novas, só a partir dos lançamentos: aplicado (principal), valor atual, rendimento, dividendos e retorno total; planejado × atual por categoria (base aplicado ou valor atual); evolução mensal do aplicado; retorno por investimento.
+
 ## 1. Como o app funciona hoje (base da integração)
 
 | Peça | O que é | Como a Minha Carteira usa |

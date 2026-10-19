@@ -2,11 +2,12 @@ import { useSearchParams } from 'react-router-dom'
 import { carregarCarteira, carregarCategorias } from '../lib/dados'
 import { montarAtivoPlano, montarPlanejamento } from '../lib/carteiraPlano'
 import { useCarregar } from '../lib/useCarregar'
-import { Cartao, Carregando, Erro, Titulo } from '../components/ui'
+import { Carregando, Erro, Titulo } from '../components/ui'
 import { Planejamento } from '../components/carteira/Planejamento'
 import { Simulador } from '../components/carteira/Simulador'
 import { Prioridades } from '../components/carteira/Prioridades'
 import { RendaFixa } from '../components/carteira/RendaFixa'
+import { Acompanhamento } from '../components/carteira/Acompanhamento'
 
 const AREAS = [
   { id: 'planejamento', rotulo: 'Planejamento', etapa: 1 },
@@ -63,10 +64,7 @@ export default function MinhaCarteira() {
       ) : area === 'renda-fixa' ? (
         <RendaFixa dados={dados} />
       ) : (
-        <Cartao className="text-sm text-texto-2">
-          A área <b className="text-texto">{AREAS.find((a) => a.id === area)!.rotulo}</b> chega na etapa {AREAS.find((a) => a.id === area)!.etapa} da
-          Minha Carteira. Comece configurando categorias e investimentos em <b className="text-texto">Planejamento</b>.
-        </Cartao>
+        <Acompanhamento dados={dados} />
       )}
     </>
   )

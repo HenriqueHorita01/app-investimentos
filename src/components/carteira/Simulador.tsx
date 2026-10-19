@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { paraSimulador } from '../../lib/carteiraPlano'
+import { dividendosDesdeUltimoAporte } from '../../lib/carteiraAcompanhamento'
+import { formatarData } from '../../lib/formato'
 import { recalcular, simularAporte, type LinhaSim, type ModoSim, type ResultadoSim } from '../../lib/carteiraSimulador'
 import { formatarBRL, formatarNumero, formatarPercentual, lerNumero } from '../../lib/formato'
 import { Cartao } from '../ui'
@@ -56,6 +58,15 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
     setParams(p, { replace: true })
   }
 
+  // Dividendos recebidos em "Investido" depois do último aporte: lembrete para reinvestir.
+  const divs = useMemo(() => dividendosDesdeUltimoAporte(dados.carteira.ativos.flatMap((a) => a.movimentacoes)), [dados])
+  const [somouDividendos, setSomouDividendos] = useState(false)
+  const somarDividendos = () => {
+    setSomouDividendos(true)
+    const atual = lerNumero(valorTexto)
+    mudarValor((Math.round(((atual > 0 ? atual : 0) + divs.valor) * 100) / 100).toFixed(2).replace('.', ','))
+  }
+
   const semCategorias = categorias.length === 0
   const passou = resultado ? resultado.totalEfetivo - resultado.orcamento : 0
   const errosMinimo = resultado?.linhas.filter((l) => !l.item.rendaVariavel && l.efetivo > 0 && l.efetivo + 1e-9 < (l.item.aplicacaoMinima ?? 0)) ?? []
@@ -94,6 +105,20 @@ export function Simulador({ dados }: { dados: DadosMinhaCarteira }) {
             </button>
           ))}
         </div>
+        {divs.valor > 0.005 && (
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-fundo p-2.5 text-xs">
+            <span className="text-texto-2">
+              Dividendos recebidos {divs.desde ? `desde o último aporte (${formatarData(divs.desde)})` : ''}: <b className="font-mono text-texto">{formatarBRL(divs.valor)}</b>
+            </span>
+            {somouDividendos ? (
+              <span className="shrink-0 text-texto-2">somado</span>
+            ) : (
+              <button type="button" className="shrink-0 font-bold text-positivo" onClick={somarDividendos}>
+                Somar ao valor
+              </button>
+            )}
+          </div>
+        )}
         <div className="text-xs text-texto-2">
           {modo === 'rebalanceamento'
             ? 'Olha a carteira atual e manda o dinheiro primeiro para o que está mais abaixo da meta. Nunca sugere vender.'
