@@ -45,6 +45,7 @@ export default function Inicio() {
   const totalInvestimentos = r.patrimonio + r.reservado
   const pctLivre = totalInvestimentos > 0 ? (r.patrimonio / totalInvestimentos) * 100 : 0
   const rendimentoReserva = r.reservaEmergencia - r.reservaInvestido
+  const totalAplicado = r.investido + r.reservadoInvestido + r.reservaInvestido
   const objetivosAbertos = progresso.filter((p) => !p.objetivo.concluido)
 
   return (
@@ -65,16 +66,36 @@ export default function Inicio() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Cartao className="!p-3.5">
-          <div className="text-xs text-texto-2">Investido (longo prazo)</div>
-          <div className="mt-1 font-mono text-[17px]">{formatarBRLInteiro(r.investido)}</div>
-          {Math.abs(r.valorizacao) >= 0.005 && (
-            <div className={`mt-0.5 text-[11px] ${corSinal(r.valorizacao)}`}>
-              {formatarBRLComSinal(r.valorizacao)} ({formatarPercentual(r.investido > 0 ? r.valorizacao / r.investido : 0)}) valorização
-            </div>
-          )}
-        </Cartao>
+      <Cartao className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="text-xs text-texto-2">Total aplicado (do seu bolso)</div>
+          <div className="font-mono text-[17px]">{formatarBRL(totalAplicado)}</div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="min-w-0">
+            <div className="text-texto-2">Investido</div>
+            <div className="font-mono">{formatarBRL(r.investido)}</div>
+            {Math.abs(r.valorizacao) >= 0.005 && (
+              <div className={`text-[11px] ${corSinal(r.valorizacao)}`}>
+                {formatarBRLComSinal(r.valorizacao)} ({formatarPercentual(r.investido > 0 ? r.valorizacao / r.investido : 0)})
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="text-texto-2">Objetivos</div>
+            <div className="font-mono">{formatarBRL(r.reservadoInvestido)}</div>
+          </div>
+          <div className="min-w-0 text-right">
+            <div className="text-texto-2">Reserva</div>
+            <div className="font-mono">{formatarBRL(r.reservaInvestido)}</div>
+          </div>
+        </div>
+        <div className="text-[11px] text-texto-2">
+          Valor aplicado, sem rendimentos; resgates descontam a parte aplicada que saiu. "Investido" é só o que não está em objetivos nem na reserva.
+        </div>
+      </Cartao>
+
+      <div className="grid grid-cols-1 gap-3">
         <Cartao className="!p-3.5">
           <div className="text-xs text-texto-2">Proventos no mês</div>
           <div className="mt-1 font-mono text-[17px] text-positivo">{formatarBRL(proventosMes)}</div>
